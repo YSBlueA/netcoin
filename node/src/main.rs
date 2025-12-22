@@ -3,6 +3,7 @@ mod server;
 
 use crate::p2p::manager::MAX_OUTBOUND;
 use chrono::Utc;
+use hex;
 use log::info;
 use netcoin_config::config::Config;
 use netcoin_core::Blockchain;
@@ -37,8 +38,33 @@ async fn main() {
     // DB path for core blockchain
     let db_path = cfg.data_dir.clone();
 
+    print!("Initialize Block chain...\n");
+
+    // Initialize core Blockchain (RocksDB-backed)
+    let mut bc = match Blockchain::new(db_path.as_str()) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Failed to open blockchain DB: {}", e);
+            // try to create empty instance (this depends on core API)
+            std::process::exit(1);
+        }
+    };
+
     // Initialize P2P networking
     let p2p = Arc::new(PeerManager::new());
+
+    // Get current blockchain height from DB and set it in P2P manager
+    let my_height: u64 = if let Some(tip_hash) = &bc.chain_tip {
+        if let Ok(Some(header)) = bc.load_header(tip_hash) {
+            header.index + 1
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+    p2p.set_my_height(my_height);
+    println!("📊 Local blockchain height: {}", my_height);
 
     /*
     {
@@ -86,17 +112,8 @@ async fn main() {
         });
     }
 
-    print!("Initialize Block chain...\n");
-
-    // Initialize core Blockchain (RocksDB-backed)
-    let mut bc = match Blockchain::new(db_path.as_str()) {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("Failed to open blockchain DB: {}", e);
-            // try to create empty instance (this depends on core API)
-            std::process::exit(1);
-        }
-    };
+    // 블록체인 동기화
+    // 현재 DB에 있는 블록 높이와 Peer에 연결된 블록 높이를 비교하여 부족한 블록을 요청하고 동기화하는 로직을 구현해야 합니다.
 
     // If chain is empty (no tip), create genesis from wallet address
     // Read wallet address from file
@@ -134,6 +151,62 @@ async fn main() {
                 p2p: p2p.clone(),
             };
             let node_handle = Arc::new(Mutex::new(node));
+
+            // set p2p handlers (headers provider + block handler) and periodic sync
+            {
+                let p2p_clone = p2p.clone();
+                let nh = node_handle.clone();
+                p2p_clone.set_on_getheaders(
+                    move |locator_hashes: Vec<Vec<u8>>, _stop_hash: Option<Vec<u8>>| {
+                        let state = nh.lock().unwrap();
+                        let mut headers: Vec<BlockHeader> = state
+                            .blockchain
+                            .iter()
+                            .rev()
+                            .take(200)
+                            .map(|b| b.header.clone())
+                            .collect();
+                        headers.reverse();
+                        headers
+                    },
+                );
+
+                let p2p_clone2 = p2p.clone();
+                let nh2 = node_handle.clone();
+                p2p_clone2.set_on_block(move |block: block::Block| {
+                    let nh_async = nh2.clone();
+                    tokio::spawn(async move {
+                        let mut state = nh_async.lock().unwrap();
+                        match state.bc.validate_and_insert_block(&block) {
+                            Ok(_) => {
+                                info!("Block added via p2p");
+                                state.blockchain.push(block);
+                            }
+                            Err(e) => log::warn!("Received invalid block from p2p: {:?}", e),
+                        }
+                    });
+                });
+
+                // spawn periodic header sync
+                let p2p_sync = p2p.clone();
+                let nh_sync = node_handle.clone();
+                tokio::spawn(async move {
+                    loop {
+                        // build locator from last N in-memory headers
+                        let mut locator: Vec<Vec<u8>> = Vec::new();
+                        {
+                            let state = nh_sync.lock().unwrap();
+                            for b in state.blockchain.iter().rev().take(10) {
+                                if let Ok(bytes) = hex::decode(&b.hash) {
+                                    locator.push(bytes);
+                                }
+                            }
+                        }
+                        p2p_sync.request_headers_from_peers(locator, None);
+                        sleep(Duration::from_secs(15)).await;
+                    }
+                });
+            }
             start_services(node_handle, miner_address).await;
             return;
         }
@@ -149,6 +222,60 @@ async fn main() {
         p2p: p2p.clone(),
     };
     let node_handle = Arc::new(Mutex::new(node));
+
+    // set p2p handlers and periodic sync (for non-genesis startup)
+    {
+        let p2p_clone = p2p.clone();
+        let nh = node_handle.clone();
+        p2p_clone.set_on_getheaders(
+            move |locator_hashes: Vec<Vec<u8>>, _stop_hash: Option<Vec<u8>>| {
+                let state = nh.lock().unwrap();
+                let mut headers: Vec<BlockHeader> = state
+                    .blockchain
+                    .iter()
+                    .rev()
+                    .take(200)
+                    .map(|b| b.header.clone())
+                    .collect();
+                headers.reverse();
+                headers
+            },
+        );
+
+        let p2p_clone2 = p2p.clone();
+        let nh2 = node_handle.clone();
+        p2p_clone2.set_on_block(move |block: block::Block| {
+            let nh_async = nh2.clone();
+            tokio::spawn(async move {
+                let mut state = nh_async.lock().unwrap();
+                match state.bc.validate_and_insert_block(&block) {
+                    Ok(_) => {
+                        info!("Block added via p2p");
+                        state.blockchain.push(block);
+                    }
+                    Err(e) => log::warn!("Received invalid block from p2p: {:?}", e),
+                }
+            });
+        });
+
+        let p2p_sync = p2p.clone();
+        let nh_sync = node_handle.clone();
+        tokio::spawn(async move {
+            loop {
+                let mut locator: Vec<Vec<u8>> = Vec::new();
+                {
+                    let state = nh_sync.lock().unwrap();
+                    for b in state.blockchain.iter().rev().take(10) {
+                        if let Ok(bytes) = hex::decode(&b.hash) {
+                            locator.push(bytes);
+                        }
+                    }
+                }
+                p2p_sync.request_headers_from_peers(locator, None);
+                sleep(Duration::from_secs(15)).await;
+            }
+        });
+    }
 
     start_services(node_handle.clone(), miner_address).await;
 }

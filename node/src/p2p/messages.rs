@@ -17,7 +17,7 @@ pub enum InventoryType {
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum P2pMessage {
     Version {
-        version: u32,
+        version: String,
         height: u64,
     },
     VerAck,

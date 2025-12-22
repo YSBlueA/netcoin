@@ -5,6 +5,7 @@ use bytes::Bytes;
 use futures::SinkExt;
 use futures::StreamExt;
 use futures::future;
+use hex;
 use log::{info, warn};
 use netcoin_core::block;
 use netcoin_core::transaction::Transaction;
@@ -28,23 +29,50 @@ pub const PEERS_FILE: &str = "peers.json";
 type Shared<T> = Arc<Mutex<T>>;
 pub struct PeerManager {
     peers: Shared<HashMap<PeerId, UnboundedSender<P2pMessage>>>,
+    peer_heights: Shared<HashMap<PeerId, u64>>,
+    my_height: Arc<Mutex<u64>>,
     /// callback when a new block is received
-    on_block: Option<Arc<dyn Fn(block::Block) + Send + Sync>>,
+    on_block: Arc<Mutex<Option<Arc<dyn Fn(block::Block) + Send + Sync>>>>,
+    on_getheaders: Arc<
+        Mutex<
+            Option<
+                Arc<dyn Fn(Vec<Vec<u8>>, Option<Vec<u8>>) -> Vec<block::BlockHeader> + Send + Sync>,
+            >,
+        >,
+    >,
 }
 
 impl PeerManager {
     pub fn new() -> Self {
         Self {
             peers: Arc::new(Mutex::new(HashMap::new())),
-            on_block: None,
+            peer_heights: Arc::new(Mutex::new(HashMap::new())),
+            my_height: Arc::new(Mutex::new(0)),
+            on_block: Arc::new(Mutex::new(None)),
+            on_getheaders: Arc::new(Mutex::new(None)),
         }
     }
 
-    pub fn set_on_block<F>(&mut self, cb: F)
+    pub fn set_on_block<F>(&self, cb: F)
     where
         F: Fn(block::Block) + Send + Sync + 'static,
     {
-        self.on_block = Some(Arc::new(cb));
+        *self.on_block.lock() = Some(Arc::new(cb));
+    }
+
+    pub fn set_on_getheaders<F>(&self, cb: F)
+    where
+        F: Fn(Vec<Vec<u8>>, Option<Vec<u8>>) -> Vec<block::BlockHeader> + Send + Sync + 'static,
+    {
+        *self.on_getheaders.lock() = Some(Arc::new(cb));
+    }
+
+    pub fn set_my_height(&self, height: u64) {
+        *self.my_height.lock() = height;
+    }
+
+    pub fn get_my_height(&self) -> u64 {
+        *self.my_height.lock()
     }
 
     /// inbound connections accept loop (spawn)
@@ -114,6 +142,15 @@ impl PeerManager {
         drop(tx);
 
         info!("Registered peer {}", peer_id_clone);
+
+        // Send my Version message to the peer immediately
+        if let Some(tx) = self.peers.lock().get(&peer_id_clone) {
+            let my_height = self.get_my_height();
+            let _ = tx.send(P2pMessage::Version {
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                height: my_height,
+            });
+        }
 
         let config = bincode::config::standard();
         let config_read = bincode::config::standard();
@@ -218,6 +255,7 @@ impl PeerManager {
         match msg {
             Version { version, height } => {
                 info!("{} sent version v{} height {}", peer_id, version, height);
+                self.peer_heights.lock().insert(peer_id.clone(), height);
 
                 if let Some(tx) = self.peers.lock().get(&peer_id) {
                     let _ = tx.send(VerAck);
@@ -236,8 +274,43 @@ impl PeerManager {
                 info!("{} verack", peer_id);
             }
 
+            GetHeaders {
+                locator_hashes,
+                stop_hash,
+            } => {
+                info!(
+                    "{} requested headers ({} locator hashes)",
+                    peer_id,
+                    locator_hashes.len()
+                );
+                let headers = match &*self.on_getheaders.lock() {
+                    Some(cb) => (cb)(locator_hashes, stop_hash),
+                    None => Vec::new(),
+                };
+                if let Some(tx) = self.peers.lock().get(&peer_id) {
+                    let _ = tx.send(P2pMessage::Headers { headers });
+                }
+            }
+
             Headers { headers } => {
                 info!("{} sent {} headers", peer_id, headers.len());
+                if !headers.is_empty() {
+                    // request full blocks for these headers
+                    let mut hashes: Vec<Vec<u8>> = Vec::new();
+                    for hdr in headers.iter() {
+                        if let Ok(hash_hex) = block::compute_header_hash(hdr) {
+                            if let Ok(bytes) = hex::decode(hash_hex) {
+                                hashes.push(bytes);
+                            }
+                        }
+                    }
+                    if let Some(tx) = self.peers.lock().get(&peer_id) {
+                        let _ = tx.send(P2pMessage::GetData {
+                            object_type: InventoryType::Block,
+                            hashes,
+                        });
+                    }
+                }
             }
 
             Inv {
@@ -262,7 +335,7 @@ impl PeerManager {
 
             Block { block } => {
                 info!("{} sent block {}", peer_id, block.hash);
-                if let Some(cb) = &self.on_block {
+                if let Some(cb) = &*self.on_block.lock() {
                     (cb)(block);
                 }
             }
@@ -347,5 +420,25 @@ impl PeerManager {
             // clone the transaction for each peer
             let _ = tx.send(P2pMessage::Tx { tx: tx_obj.clone() });
         }
+    }
+
+    /// Request headers from all connected peers using a GetHeaders message.
+    /// `locator_hashes` and `stop_hash` are sent as-is to peers (best-effort).
+    pub fn request_headers_from_peers(
+        &self,
+        locator_hashes: Vec<Vec<u8>>,
+        stop_hash: Option<Vec<u8>>,
+    ) {
+        let peers = self.peers.lock().clone();
+        for (_id, tx) in peers {
+            let _ = tx.send(P2pMessage::GetHeaders {
+                locator_hashes: locator_hashes.clone(),
+                stop_hash: stop_hash.clone(),
+            });
+        }
+    }
+
+    pub fn get_peer_heights(&self) -> HashMap<PeerId, u64> {
+        self.peer_heights.lock().clone()
     }
 }
