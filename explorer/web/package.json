@@ -1,0 +1,25 @@
+{
+  "name": "netcoin-explorer-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
+  },
+  "dependencies": {
+    "vue": "^3.3.4",
+    "axios": "^1.5.0",
+    "vue-router": "^4.2.4",
+    "pinia": "^2.1.4",
+    "chart.js": "^4.4.0",
+    "vue-chartjs": "^5.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.3.4",
+    "vite": "^4.4.11",
+    "typescript": "^5.2.2"
+  }
+}
