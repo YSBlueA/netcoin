@@ -9,6 +9,37 @@ pub struct Config {
 }
 
 impl Config {
+    /// Compute the default wallet path depending on the target OS.
+    fn default_wallet_path() -> String {
+        let home = dirs::home_dir().expect("Cannot find home directory");
+
+        // Use a Windows-friendly folder when building on Windows to avoid tilde expansion issues.
+        if cfg!(target_os = "windows") {
+            let base = dirs::data_dir().unwrap_or(home).join("Netcoin");
+            return base.join("wallet.json").to_string_lossy().into_owned();
+        }
+
+        home.join(".netcoin")
+            .join("wallet.json")
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Compute the default data directory depending on the target OS.
+    fn default_data_dir() -> String {
+        let home = dirs::home_dir().expect("Cannot find home directory");
+
+        if cfg!(target_os = "windows") {
+            let base = dirs::data_dir().unwrap_or(home).join("Netcoin");
+            return base.join("data").to_string_lossy().into_owned();
+        }
+
+        home.join(".netcoin")
+            .join("data")
+            .to_string_lossy()
+            .into_owned()
+    }
+
     pub fn default_path() -> PathBuf {
         let home = dirs::home_dir().expect("Cannot find home directory");
         home.join(".netcoin/config.json")
@@ -69,9 +100,9 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            wallet_path: "~/.netcoin/wallet.json".to_string(),
+            wallet_path: Self::default_wallet_path(),
             node_rpc_url: "http://127.0.0.1:8333".to_string(),
-            data_dir: "~/.netcoin/data".to_string(),
+            data_dir: Self::default_data_dir(),
         }
     }
 }
