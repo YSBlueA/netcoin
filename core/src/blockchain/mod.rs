@@ -1,6 +1,6 @@
 use crate::block::{Block, BlockHeader, compute_header_hash, compute_merkle_root};
 use crate::db::{open_db, put_batch};
-use crate::transaction::{Transaction, TransactionInput, TransactionOutput};
+use crate::transaction::Transaction;
 use crate::utxo::Utxo;
 use anyhow::{Result, anyhow};
 use bincode::config;
@@ -10,7 +10,13 @@ use rocksdb::{DB, WriteBatch};
 
 pub static BINCODE_CONFIG: Lazy<config::Configuration> = Lazy::new(|| config::standard());
 
-/// Blockchain structure (disk-based RocksDB + in-memory cache)
+/// Blockchain structure (disk-based RocksDB storage)
+///
+/// This structure manages the blockchain state including:
+/// - Block storage and retrieval
+/// - Transaction validation and UTXO management
+/// - Chain tip tracking
+/// - Balance and transaction queries
 pub struct Blockchain {
     pub db: DB,
     pub chain_tip: Option<String>, // tip hash hex
@@ -30,6 +36,12 @@ impl Blockchain {
             difficulty: 2, /*16*/
             block_interval: 60,
         }) // default difficulty (bits like count leading zeros)
+    }
+
+    /// Helper: Iterate over all blocks efficiently
+    fn get_all_blocks_cached(&self) -> Result<Vec<Block>> {
+        // This could be further optimized with caching in production
+        self.get_all_blocks()
     }
 
     /// Create genesis block (with a single coinbase transaction)
@@ -106,10 +118,12 @@ impl Blockchain {
 
         // 3) previous exists (unless genesis)
         if block.header.index > 0 {
-            let prev_hash = &block.header.previous_hash;
-            let key = format!("b:{}", prev_hash);
-            if self.db.get(key.as_bytes())?.is_none() {
-                return Err(anyhow!("previous header not found: {}", prev_hash));
+            let prev_key = format!("b:{}", block.header.previous_hash);
+            if self.db.get(prev_key.as_bytes())?.is_none() {
+                return Err(anyhow!(
+                    "previous header not found: {}",
+                    block.header.previous_hash
+                ));
             }
         }
 
@@ -121,6 +135,7 @@ impl Blockchain {
         if block.transactions.is_empty() {
             return Err(anyhow!("empty block"));
         }
+
         // coinbase must be first tx and inputs empty
         let coinbase = &block.transactions[0];
         if !coinbase.inputs.is_empty() {
@@ -130,8 +145,7 @@ impl Blockchain {
         // iterate non-coinbase txs
         for (i, tx) in block.transactions.iter().enumerate() {
             // verify signature(s)
-            let ok = tx.verify_signatures()?;
-            if !ok {
+            if !tx.verify_signatures()? {
                 return Err(anyhow!("tx signature invalid: {}", tx.txid));
             }
 
@@ -230,26 +244,10 @@ impl Blockchain {
         Ok(None)
     }
 
-    /// get balance by scanning UTXO set (inefficient but correct)
+    /// get balance by scanning UTXO set (use get_address_balance_from_db instead)
+    #[deprecated(note = "Use get_address_balance_from_db instead")]
     pub fn get_balance(&self, address: &str) -> Result<u128, Box<dyn std::error::Error>> {
-        let mut iter = self.db.iterator(rocksdb::IteratorMode::Start);
-        let mut sum: u128 = 0;
-
-        while let Some(item) = iter.next() {
-            let (k, v) = item?;
-
-            let key = String::from_utf8_lossy(&k).to_string();
-            if key.starts_with("u:") {
-                let (utxo, _): (Utxo, usize) = bincode::decode_from_slice(&v, *BINCODE_CONFIG)
-                    .map_err(|e| format!("deserialize failed: {}", e))?;
-
-                if utxo.to == address {
-                    sum += utxo.amount as u128;
-                }
-            }
-        }
-
-        Ok(sum)
+        Ok(self.get_address_balance_from_db(address)? as u128)
     }
 
     /// Determine next block index based on current tip
@@ -288,18 +286,17 @@ impl Blockchain {
 
     pub fn get_utxos(&self, address: &str) -> Result<Vec<Utxo>> {
         let mut utxos = Vec::new();
-
         let iter = self.db.iterator(rocksdb::IteratorMode::Start);
 
         for item in iter {
             let (key, value) = item?;
-            let key_str = String::from_utf8(key.to_vec())?;
+            let key_str = String::from_utf8_lossy(&key);
 
             // UTXO key: u:{txid}:{vout}
             if key_str.starts_with("u:") {
-                let (_u, _): (Utxo, usize) = bincode::decode_from_slice(&value, *BINCODE_CONFIG)?;
-                if _u.to == address {
-                    utxos.push(_u);
+                let (utxo, _): (Utxo, usize) = bincode::decode_from_slice(&value, *BINCODE_CONFIG)?;
+                if utxo.to == address {
+                    utxos.push(utxo);
                 }
             }
         }
@@ -313,7 +310,7 @@ impl Blockchain {
         let iter = self.db.iterator(rocksdb::IteratorMode::Start);
         for item in iter {
             let (k, _v) = item?;
-            let key_str = String::from_utf8_lossy(&k).to_string();
+            let key_str = String::from_utf8_lossy(&k);
             if key_str.starts_with("t:") {
                 count += 1;
             }
@@ -371,7 +368,7 @@ impl Blockchain {
 
         for item in iter {
             let (k, v) = item?;
-            let key_str = String::from_utf8_lossy(&k).to_string();
+            let key_str = String::from_utf8_lossy(&k);
 
             // Iterate through all transaction outputs: u:{txid}:{vout}
             if key_str.starts_with("u:") {
@@ -390,7 +387,7 @@ impl Blockchain {
 
         for item in iter {
             let (key, value) = item?;
-            let key_str = String::from_utf8(key.to_vec())?;
+            let key_str = String::from_utf8_lossy(&key);
 
             // UTXO key: u:{txid}:{vout}
             if key_str.starts_with("u:") {
@@ -407,7 +404,7 @@ impl Blockchain {
     /// Get total received amount for address (all outputs to this address)
     pub fn get_address_received_from_db(&self, address: &str) -> Result<u64> {
         let mut total: u64 = 0;
-        let blocks = self.get_all_blocks()?;
+        let blocks = self.get_all_blocks_cached()?;
 
         for block in blocks {
             for tx in block.transactions {
@@ -425,20 +422,14 @@ impl Blockchain {
     /// Get total sent amount for address (all transaction outputs, excluding coinbase inputs)
     pub fn get_address_sent_from_db(&self, address: &str) -> Result<u64> {
         let mut total: u64 = 0;
-        let blocks = self.get_all_blocks()?;
+        let blocks = self.get_all_blocks_cached()?;
 
         for block in blocks {
             for tx in block.transactions {
                 // Skip coinbase transactions (first tx in block)
                 if !tx.inputs.is_empty() {
                     // Check if any input comes from this address
-                    let mut is_sender = false;
-                    for input in &tx.inputs {
-                        if input.pubkey == address {
-                            is_sender = true;
-                            break;
-                        }
-                    }
+                    let is_sender = tx.inputs.iter().any(|input| input.pubkey == address);
 
                     if is_sender {
                         // Sum all outputs from this transaction
@@ -455,40 +446,22 @@ impl Blockchain {
 
     /// Get transaction count for address
     pub fn get_address_transaction_count_from_db(&self, address: &str) -> Result<usize> {
-        let mut count: usize = 0;
-        let blocks = self.get_all_blocks()?;
+        let blocks = self.get_all_blocks_cached()?;
         let mut seen_txids = std::collections::HashSet::new();
 
         for block in blocks {
             for tx in block.transactions {
                 // Check if address is involved (sender or receiver)
-                let mut involved = false;
-
-                // Check outputs (receiver)
-                for output in &tx.outputs {
-                    if output.to == address {
-                        involved = true;
-                        break;
-                    }
-                }
-
-                // Check inputs (sender)
-                if !involved {
-                    for input in &tx.inputs {
-                        if input.pubkey == address {
-                            involved = true;
-                            break;
-                        }
-                    }
-                }
+                let is_receiver = tx.outputs.iter().any(|output| output.to == address);
+                let is_sender = tx.inputs.iter().any(|input| input.pubkey == address);
 
                 // Count each unique transaction only once
-                if involved && seen_txids.insert(tx.txid.clone()) {
-                    count += 1;
+                if (is_receiver || is_sender) && seen_txids.insert(tx.txid.clone()) {
+                    // Counter automatically incremented by HashSet
                 }
             }
         }
 
-        Ok(count)
+        Ok(seen_txids.len())
     }
 }

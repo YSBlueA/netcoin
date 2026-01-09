@@ -98,17 +98,8 @@ impl Transaction {
 
         let tx_bytes = self.serialize_for_hash()?;
 
-        for b in &tx_bytes {
-            print!("{:02x}", b);
-        }
-
         for inp in &self.inputs {
             let sig_bytes = hex::decode(inp.signature.as_ref().unwrap())?;
-
-            for b in &sig_bytes {
-                print!("{:02x}", b);
-            }
-
             let sig = Signature::try_from(&sig_bytes[..])?;
 
             let pk_bytes = hex::decode(&inp.pubkey)?;
@@ -135,7 +126,7 @@ fn sign_and_verify() {
 
     let signing_key = SigningKey::try_from(&secret_bytes[..]).unwrap();
 
-    let mut tx = Transaction::coinbase("addr", 50);
+    let tx = Transaction::coinbase("addr", 50);
     assert!(tx.verify_signatures().unwrap());
 
     let inp = TransactionInput {

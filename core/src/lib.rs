@@ -1,16 +1,15 @@
 pub mod block;
 pub mod blockchain;
 pub mod config;
-pub mod transaction;
-pub mod wallet;
-
-pub use block::*;
-pub use blockchain::*;
-pub use config::*;
-pub use transaction::*;
-pub use wallet::*;
-
 pub mod consensus;
 pub mod db;
 pub mod network;
+pub mod transaction;
 pub mod utxo;
+pub mod wallet;
+
+// Explicit re-exports to avoid ambiguous glob re-exports
+pub use block::{Block, BlockHeader, compute_header_hash, compute_merkle_root};
+pub use blockchain::Blockchain;
+pub use transaction::{Transaction, TransactionInput, TransactionOutput};
+pub use wallet::Wallet;
