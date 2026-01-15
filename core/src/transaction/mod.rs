@@ -45,7 +45,8 @@ impl TransactionOutput {
 /// Transaction: inputs / outputs / timestamp / txid
 #[derive(Encode, Decode, Debug, Clone)]
 pub struct Transaction {
-    pub txid: String, // hex
+    pub txid: String,     // UTXO 내부 추적용 (SHA256 double hash)
+    pub eth_hash: String, // EVM 외부 노출용 (Keccak256, 0x prefix)
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub timestamp: i64,
@@ -56,11 +57,12 @@ impl Transaction {
         let output = TransactionOutput::new(to.to_string(), amount);
         let tx = Transaction {
             txid: "".to_string(),
+            eth_hash: "".to_string(),
             inputs: vec![],
             outputs: vec![output],
             timestamp: chrono::Utc::now().timestamp(),
         };
-        tx.with_txid()
+        tx.with_hashes()
     }
 
     pub fn serialize_for_hash(&self) -> Result<Vec<u8>, EncodeError> {
@@ -76,6 +78,7 @@ impl Transaction {
         )?)
     }
 
+    /// UTXO 내부 추적용 txid 계산 (Bitcoin style: SHA256 double hash)
     pub fn compute_txid(&self) -> Result<String, anyhow::Error> {
         let bytes = self.serialize_for_hash()?;
         let h1 = Sha256::digest(&bytes);
@@ -83,11 +86,30 @@ impl Transaction {
         Ok(hex::encode(h2))
     }
 
-    pub fn with_txid(mut self) -> Self {
+    /// EVM 외부 노출용 hash 계산 (Ethereum style: Keccak256)
+    pub fn compute_eth_hash(&self) -> Result<String, anyhow::Error> {
+        use sha3::{Digest as Sha3Digest, Keccak256};
+
+        let bytes = self.serialize_for_hash()?;
+        let hash = Keccak256::digest(&bytes);
+        Ok(format!("0x{}", hex::encode(hash)))
+    }
+
+    /// txid와 eth_hash 모두 설정 (권장)
+    pub fn with_hashes(mut self) -> Self {
         if let Ok(txid) = self.compute_txid() {
             self.txid = txid;
         }
+        if let Ok(eth_hash) = self.compute_eth_hash() {
+            self.eth_hash = eth_hash;
+        }
         self
+    }
+
+    /// 하위 호환성을 위한 메서드 (deprecated)
+    #[deprecated(note = "Use with_hashes() instead")]
+    pub fn with_txid(self) -> Self {
+        self.with_hashes()
     }
 
     /// sign inputs using secp256k1
@@ -163,6 +185,7 @@ fn sign_and_verify() {
     let out = TransactionOutput::new("alice".to_string(), U256::from(10));
     let mut tx2 = Transaction {
         txid: "".to_string(),
+        eth_hash: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
         inputs: vec![inp],
         outputs: vec![out],
         timestamp: chrono::Utc::now().timestamp(),

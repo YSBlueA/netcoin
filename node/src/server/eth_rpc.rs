@@ -248,8 +248,9 @@ async fn eth_send_raw_transaction(
             };
 
             log::info!(
-                "✅ Converted to NetCoin UTXO transaction: {}",
-                netcoin_tx.txid
+                "✅ Converted to NetCoin UTXO transaction: txid={}, eth_hash={}",
+                netcoin_tx.txid,
+                netcoin_tx.eth_hash
             );
 
             // Add to mempool
@@ -258,7 +259,7 @@ async fn eth_send_raw_transaction(
             // Check if already seen
             if state.seen_tx.contains(&netcoin_tx.txid) {
                 log::warn!("Transaction already seen: {}", netcoin_tx.txid);
-                return JsonRpcResponse::success(id, json!(format!("0x{}", eth_tx_hash_hex)));
+                return JsonRpcResponse::success(id, json!(netcoin_tx.eth_hash));
             }
 
             // Verify signatures
@@ -271,14 +272,14 @@ async fn eth_send_raw_transaction(
             state.seen_tx.insert(netcoin_tx.txid.clone());
             state.pending.push(netcoin_tx.clone());
 
-            // Store mapping from Ethereum tx hash to NetCoin txid (for receipt lookup)
+            // Store mapping: eth_hash -> txid
             state
                 .eth_to_netcoin_tx
-                .insert(eth_tx_hash_hex.clone(), netcoin_tx.txid.clone());
+                .insert(netcoin_tx.eth_hash.clone(), netcoin_tx.txid.clone());
 
             log::info!(
-                "🗺️ Stored mapping: ETH hash 0x{} -> NetCoin txid {}",
-                eth_tx_hash_hex,
+                "🗺️ Stored mapping: ETH hash {} -> NetCoin txid {}",
+                netcoin_tx.eth_hash,
                 netcoin_tx.txid
             );
             log::info!("✅ Transaction added to mempool: {}", netcoin_tx.txid);
@@ -287,6 +288,7 @@ async fn eth_send_raw_transaction(
             // Broadcast to peers
             let p2p_clone = state.p2p.clone();
             let tx_clone = netcoin_tx.clone();
+            let eth_hash_result = netcoin_tx.eth_hash.clone();
             drop(state); // Release lock before spawning
 
             tokio::spawn(async move {
@@ -295,10 +297,10 @@ async fn eth_send_raw_transaction(
 
             // Return Ethereum transaction hash (what MetaMask expects)
             log::info!(
-                "📤 Returning ETH transaction hash to MetaMask: 0x{}",
-                eth_tx_hash_hex
+                "📤 Returning ETH transaction hash to MetaMask: {}",
+                eth_hash_result
             );
-            return JsonRpcResponse::success(id, json!(format!("0x{}", eth_tx_hash_hex)));
+            return JsonRpcResponse::success(id, json!(eth_hash_result));
         }
     }
 
@@ -644,12 +646,13 @@ async fn convert_eth_to_utxo_transaction(
     // Create transaction to measure actual size
     let mut tx = Transaction {
         txid: String::new(),
+        eth_hash: String::new(),
         inputs,
         outputs,
         timestamp: chrono::Utc::now().timestamp(),
     };
 
-    tx = tx.with_txid();
+    tx = tx.with_hashes();
 
     // Calculate actual transaction size in bytes using bincode v2
     let tx_bytes = bincode::encode_to_vec(&tx, *BINCODE_CONFIG)
@@ -685,7 +688,7 @@ async fn convert_eth_to_utxo_transaction(
 
     // Recreate transaction with final outputs
     tx.outputs = final_outputs;
-    tx = tx.with_txid();
+    tx = tx.with_hashes();
 
     log::info!(
         "Created UTXO tx: {} inputs, {} outputs, {} bytes, fee={} natoshi, txid={}",
@@ -762,31 +765,16 @@ async fn eth_get_transaction_receipt(
 
             let state = node.lock().unwrap();
 
-            log::info!("📊 Current mapping size: {}", state.eth_to_netcoin_tx.len());
-            log::info!("🔎 Looking up mapping for ETH hash: 0x{}", tx_hash);
-
-            // Try to resolve Ethereum tx hash to NetCoin txid
-            let netcoin_txid = state
-                .eth_to_netcoin_tx
-                .get(tx_hash)
-                .map(|s| s.as_str())
-                .unwrap_or(tx_hash);
-
-            if netcoin_txid != tx_hash {
-                log::info!("✅ Mapping found: 0x{} -> {}", tx_hash, netcoin_txid);
-            } else {
-                log::warn!(
-                    "⚠️ No mapping found for 0x{}, trying as NetCoin txid directly",
-                    tx_hash
-                );
-            }
-
-            match state.bc.get_transaction(netcoin_txid) {
+            // Try to find transaction by eth_hash first (recommended)
+            match state
+                .bc
+                .get_transaction_by_eth_hash(&format!("0x{}", tx_hash))
+            {
                 Ok(Some((tx, block_height))) => {
                     log::info!(
-                        "✅ Transaction found in block {}: {}",
+                        "✅ Transaction found by eth_hash in block {}: txid={}",
                         block_height,
-                        netcoin_txid
+                        tx.txid
                     );
 
                     // Get block hash
@@ -847,10 +835,14 @@ async fn eth_get_transaction_receipt(
                     return JsonRpcResponse::success(id, receipt);
                 }
                 Ok(None) => {
-                    log::info!("❌ Transaction not found in blockchain: {}", netcoin_txid);
+                    log::info!("❌ Transaction not found by eth_hash: 0x{}", tx_hash);
                 }
                 Err(e) => {
-                    log::error!("❌ Error querying transaction {}: {}", netcoin_txid, e);
+                    log::error!(
+                        "❌ Error querying transaction by eth_hash 0x{}: {}",
+                        tx_hash,
+                        e
+                    );
                 }
             }
         }

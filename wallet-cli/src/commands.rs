@@ -219,6 +219,7 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
 
     let mut tx = Transaction {
         txid: "".to_string(),
+        eth_hash: "".to_string(),
         inputs: selected_inputs,
         outputs,
         timestamp: chrono::Utc::now().timestamp(),
@@ -246,11 +247,12 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
     tx.verify_signatures()
         .expect("Signature verification failed after signing");
 
-    // 6️⃣ txid 채우기
-    tx = tx.with_txid();
+    // 6️⃣ txid와 eth_hash 채우기
+    tx = tx.with_hashes();
 
     println!("✅ Transaction created successfully!");
-    println!("   TXID: {}", tx.txid);
+    println!("   TXID (internal): {}", tx.txid);
+    println!("   ETH Hash (external): {}", tx.eth_hash);
     println!("   Amount: {} NTC", natoshi_to_ntc(amount_natoshi));
     if change > U256::zero() {
         println!("   Change: {} NTC", natoshi_to_ntc(change));

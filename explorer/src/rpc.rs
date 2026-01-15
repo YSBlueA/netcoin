@@ -259,10 +259,23 @@ impl NodeRpcClient {
     }
 
     /// 트랜잭션 정보 조회 (블록에서 추출)
+    /// UTXO 상태를 추적하여 정확한 수수료 계산
     pub fn extract_transactions(&self, blocks: &[Block]) -> Vec<TransactionInfo> {
         let mut transactions = Vec::new();
+        // UTXO 맵: (txid, vout) -> amount
+        let mut utxo_map: std::collections::HashMap<(String, u32), U256> =
+            std::collections::HashMap::new();
 
-        for block in blocks {
+        // 블록을 높이 순으로 정렬 (매우 중요!)
+        let mut sorted_blocks = blocks.to_vec();
+        sorted_blocks.sort_by_key(|b| b.header.index);
+
+        log::info!(
+            "🔍 Processing {} blocks in order for UTXO tracking",
+            sorted_blocks.len()
+        );
+
+        for block in &sorted_blocks {
             let timestamp = chrono::DateTime::<Utc>::from_timestamp(block.header.timestamp, 0)
                 .unwrap_or_else(|| Utc::now());
 
@@ -271,45 +284,148 @@ impl NodeRpcClient {
 
                 // Coinbase 트랜잭션: 보상
                 if is_coinbase {
-                    // 보상 트랜잭션: 모든 output을 분리된 트랜잭션으로 표시
-                    for output in &tx.outputs {
-                        transactions.push(TransactionInfo {
-                            hash: tx.txid.clone(),
-                            from: "Block_Reward".to_string(),
-                            to: output.to.clone(),
-                            amount: output.amount(),
-                            fee: U256::zero(),
-                            total: output.amount(), // 보상이므로 amount == total
-                            timestamp,
-                            block_height: Some(block.header.index),
-                            status: "confirmed".to_string(),
-                        });
+                    // 보상 트랜잭션: 모든 output의 합계로 하나의 트랜잭션 생성
+                    let total_amount = tx
+                        .outputs
+                        .iter()
+                        .fold(U256::zero(), |acc, out| acc + out.amount());
+                    let to_address = if tx.outputs.len() == 1 {
+                        tx.outputs[0].to.clone()
+                    } else {
+                        format!("{} recipients", tx.outputs.len())
+                    };
+
+                    transactions.push(TransactionInfo {
+                        hash: tx.eth_hash.clone(), // EVM hash 사용
+                        txid: tx.txid.clone(),     // UTXO txid 유지
+                        from: "Block_Reward".to_string(),
+                        to: to_address,
+                        amount: total_amount,
+                        fee: U256::zero(),
+                        total: total_amount,
+                        timestamp,
+                        block_height: Some(block.header.index),
+                        status: "confirmed".to_string(),
+                    });
+
+                    // Coinbase outputs를 UTXO 맵에 추가
+                    for (vout, output) in tx.outputs.iter().enumerate() {
+                        utxo_map.insert((tx.txid.clone(), vout as u32), output.amount());
                     }
                 } else {
-                    // 일반 트랜잭션: 모든 output을 표시
-                    // Note: fee 계산은 DB 접근이 필요하므로 여기서는 0으로 설정
+                    // 일반 트랜잭션: input 합계와 output 합계로 수수료 계산
                     let from = tx
                         .inputs
                         .first()
                         .map(|i| i.pubkey.clone())
                         .unwrap_or_else(|| "Unknown".to_string());
 
-                    for output in &tx.outputs {
-                        transactions.push(TransactionInfo {
-                            hash: tx.txid.clone(),
-                            from: from.clone(),
-                            to: output.to.clone(),
-                            amount: output.amount(),
-                            fee: U256::zero(),      // Fee 계산은 UTXO 조회가 필요
-                            total: output.amount(), // 현재는 fee=0이므로 amount == total
-                            timestamp,
-                            block_height: Some(block.header.index),
-                            status: "confirmed".to_string(),
-                        });
+                    // Input 총액 계산 (UTXO 맵에서 조회)
+                    let mut input_sum = U256::zero();
+                    let mut missing_inputs = 0;
+                    for (idx, input) in tx.inputs.iter().enumerate() {
+                        if let Some(amount) = utxo_map.get(&(input.txid.clone(), input.vout)) {
+                            input_sum += *amount;
+                        } else {
+                            missing_inputs += 1;
+                            // 처음 3개와 마지막 1개만 상세 로그
+                            if idx < 3 || idx == tx.inputs.len() - 1 {
+                                log::warn!(
+                                    "⚠️ UTXO not found: {}:{} (input #{} of {})",
+                                    &input.txid[..8],
+                                    input.vout,
+                                    idx + 1,
+                                    tx.inputs.len()
+                                );
+                            }
+                        }
+                    }
+
+                    // 요약 로그
+                    if missing_inputs > 0 {
+                        log::warn!(
+                            "⚠️ TX {}: Missing {}/{} inputs, UTXO map size: {}",
+                            &tx.txid[..8],
+                            missing_inputs,
+                            tx.inputs.len(),
+                            utxo_map.len()
+                        );
+                    }
+
+                    // Output 총액 계산
+                    let output_sum = tx
+                        .outputs
+                        .iter()
+                        .fold(U256::zero(), |acc, out| acc + out.amount());
+
+                    // 수수료 = Input 총액 - Output 총액
+                    let fee = if input_sum >= output_sum {
+                        input_sum - output_sum
+                    } else {
+                        // Input을 찾지 못한 경우, 대략적인 수수료 추정
+                        if missing_inputs > 0 {
+                            // 기본 수수료 추정: 0.0001 NTC
+                            U256::from(100_000_000_000_000u64)
+                        } else {
+                            U256::zero()
+                        }
+                    };
+
+                    // 실제 전송 금액과 총액
+                    let amount = output_sum;
+                    let total = if input_sum > U256::zero() {
+                        input_sum
+                    } else {
+                        // Input 합계를 알 수 없는 경우, output + 추정 수수료
+                        output_sum + fee
+                    };
+
+                    let to_address = if tx.outputs.len() == 1 {
+                        tx.outputs[0].to.clone()
+                    } else {
+                        format!("{} recipients", tx.outputs.len())
+                    };
+
+                    log::debug!(
+                        "💰 TX {}: inputs={}, outputs={}, fee={}, total={}",
+                        &tx.txid[..8],
+                        input_sum,
+                        output_sum,
+                        fee,
+                        total
+                    );
+
+                    transactions.push(TransactionInfo {
+                        hash: tx.eth_hash.clone(), // EVM hash 사용
+                        txid: tx.txid.clone(),     // UTXO txid 유지
+                        from: from,
+                        to: to_address,
+                        amount,
+                        fee,
+                        total,
+                        timestamp,
+                        block_height: Some(block.header.index),
+                        status: "confirmed".to_string(),
+                    });
+
+                    // 사용된 inputs를 UTXO 맵에서 제거
+                    for input in &tx.inputs {
+                        utxo_map.remove(&(input.txid.clone(), input.vout));
+                    }
+
+                    // 새로운 outputs를 UTXO 맵에 추가
+                    for (vout, output) in tx.outputs.iter().enumerate() {
+                        utxo_map.insert((tx.txid.clone(), vout as u32), output.amount());
                     }
                 }
             }
         }
+
+        log::info!(
+            "✅ Processed {} transactions, UTXO map contains {} entries",
+            transactions.len(),
+            utxo_map.len()
+        );
 
         transactions
     }

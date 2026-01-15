@@ -127,38 +127,36 @@ pub async fn get_transaction_by_hash(
     state: web::Data<Arc<Mutex<AppState>>>,
     path: web::Path<String>,
 ) -> HttpResponse {
-    let mut hash = path.into_inner();
+    let hash = path.into_inner();
 
-    // If hash starts with 0x, it might be an Ethereum transaction hash
-    // Try to resolve it to NetCoin txid
-    if hash.starts_with("0x") {
-        let rpc = NodeRpcClient::new("http://127.0.0.1:8333");
-        if let Ok(netcoin_txid) = rpc.resolve_eth_hash(&hash).await {
-            log::info!(
-                "🔄 Resolved ETH hash {} to NetCoin txid {}",
-                hash,
-                netcoin_txid
-            );
-            hash = netcoin_txid;
-        } else {
-            // Strip 0x and try as regular hash
-            hash = hash.strip_prefix("0x").unwrap_or(&hash).to_string();
-        }
-    }
+    log::info!("🔍 Looking up transaction by hash: {}", hash);
 
     let app_state = state.lock().unwrap();
 
+    // eth_hash로 먼저 검색 (권장)
     if let Some(tx) = app_state
         .cached_transactions
         .iter()
         .find(|t| t.hash == hash)
     {
-        HttpResponse::Ok().json(tx)
-    } else {
-        HttpResponse::NotFound().json(serde_json::json!({
-            "error": "Transaction not found"
-        }))
+        log::info!("✅ Found by eth_hash: {}", hash);
+        return HttpResponse::Ok().json(tx);
     }
+
+    // 하위 호환성: txid로도 검색
+    if let Some(tx) = app_state
+        .cached_transactions
+        .iter()
+        .find(|t| t.txid == hash)
+    {
+        log::info!("✅ Found by txid (legacy): {}", hash);
+        return HttpResponse::Ok().json(tx);
+    }
+
+    log::warn!("❌ Transaction not found: {}", hash);
+    HttpResponse::NotFound().json(serde_json::json!({
+        "error": "Transaction not found"
+    }))
 }
 
 // 블록체인 통계 조회

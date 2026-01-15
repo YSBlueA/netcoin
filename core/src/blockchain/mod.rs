@@ -415,6 +415,31 @@ impl Blockchain {
         Ok(None)
     }
 
+    /// Get transaction by eth_hash (EVM-compatible hash)
+    pub fn get_transaction_by_eth_hash(
+        &self,
+        eth_hash: &str,
+    ) -> anyhow::Result<Option<(Transaction, usize)>> {
+        let blocks = self.get_all_blocks()?;
+
+        // Normalize eth_hash (add 0x if missing)
+        let normalized_hash = if eth_hash.starts_with("0x") {
+            eth_hash.to_string()
+        } else {
+            format!("0x{}", eth_hash)
+        };
+
+        for block in blocks {
+            for tx in block.transactions {
+                if tx.eth_hash == normalized_hash {
+                    return Ok(Some((tx, block.header.index as usize)));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Calculate total transaction volume from all outputs in DB (in natoshi)
     pub fn calculate_total_volume(&self) -> Result<U256> {
         let mut total = U256::zero();

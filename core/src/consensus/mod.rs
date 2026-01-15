@@ -47,7 +47,7 @@ pub fn mine_block_with_coinbase(
     reward: U256,
     cancel_flag: Arc<AtomicBool>,
 ) -> Result<Block> {
-    let coinbase = Transaction::coinbase(miner_addr, reward).with_txid();
+    let coinbase = Transaction::coinbase(miner_addr, reward).with_hashes();
     let mut all_txs = vec![coinbase];
     all_txs.extend(txs);
 
