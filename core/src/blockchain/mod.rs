@@ -245,7 +245,7 @@ impl Blockchain {
 
             if fee < min_fee {
                 return Err(anyhow!(
-                    "transaction fee too low {}: got {} natoshi, need {} natoshi (base 100k + {} bytes × 100 nat/byte)",
+                    "transaction fee too low {}: got {} natoshi, need {} natoshi (base 100 Twei + {} bytes × 200 Gwei/byte)",
                     tx.txid,
                     fee,
                     min_fee,

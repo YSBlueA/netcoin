@@ -21,7 +21,10 @@
     <div v-else-if="transaction" class="detail-container">
       <h1>트랜잭션 상세</h1>
 
-      <div v-if="isEthHash" class="info-banner">
+      <div v-if="isCoinbase" class="info-banner coinbase-banner">
+        ⛏️ 채굴 보상 트랜잭션
+      </div>
+      <div v-else-if="isEthHash" class="info-banner">
         ℹ️ 이 트랜잭션은 MetaMask를 통해 전송되었습니다
       </div>
 
@@ -30,7 +33,7 @@
           <span class="label">해시</span>
           <span class="value monospace">{{ transaction.hash }}</span>
         </div>
-        <div class="detail-item">
+        <div class="detail-item" v-if="!isCoinbase">
           <span class="label">보낸 주소</span>
           <span
             class="value address-link"
@@ -39,24 +42,35 @@
             {{ transaction.from }}
           </span>
         </div>
+        <div class="detail-item" v-else>
+          <span class="label">보낸 주소</span>
+          <span class="value coinbase-from">{{ transaction.from }}</span>
+        </div>
         <div class="detail-item">
           <span class="label">받는 주소</span>
-          <span class="value address-link" @click="goToAddress(transaction.to)">
+          <span 
+            class="value"
+            :class="{ 'address-link': !transaction.to.includes('recipients') && !transaction.to.includes('outputs') }"
+            @click="!transaction.to.includes('recipients') && !transaction.to.includes('outputs') ? goToAddress(transaction.to) : null"
+          >
             {{ transaction.to }}
           </span>
         </div>
         <div class="detail-item">
-          <span class="label">금액</span>
+          <span class="label">{{ isCoinbase ? '보상 금액' : '전송 금액' }}</span>
           <span class="value amount"
             >{{ formatAmount(transaction.amount) }} NTC</span
           >
         </div>
-        <div class="detail-item">
+        <div class="detail-item" v-if="!isCoinbase">
           <span class="label">수수료</span>
-          <span class="value fee">{{ formatAmount(transaction.fee) }} NTC</span>
+          <span class="value fee">
+            {{ formatAmount(transaction.fee) }} NTC
+            <span class="natoshi-info">({{ formatNatoshi(transaction.fee) }} natoshi)</span>
+          </span>
         </div>
-        <div class="detail-item">
-          <span class="label">총액</span>
+        <div class="detail-item" v-if="!isCoinbase">
+          <span class="label">총 지불액</span>
           <span class="value total"
             >{{ formatTotal(transaction.amount, transaction.fee) }} NTC</span
           >
@@ -105,6 +119,11 @@ export default {
       searchHash: "",
       isEthHash: false,
     };
+  },
+  computed: {
+    isCoinbase() {
+      return this.transaction && this.transaction.from === "Block_Reward";
+    },
   },
   mounted() {
     this.fetchTransaction();
@@ -202,6 +221,28 @@ export default {
         maximumFractionDigits: 18,
       });
     },
+    formatNatoshi(value) {
+      // Return the raw natoshi value as a formatted string
+      let num;
+
+      if (Array.isArray(value)) {
+        num =
+          BigInt(value[0]) +
+          (BigInt(value[1]) << BigInt(64)) +
+          (BigInt(value[2]) << BigInt(128)) +
+          (BigInt(value[3]) << BigInt(192));
+      } else if (typeof value === "string") {
+        if (value.startsWith("0x")) {
+          num = BigInt(value);
+        } else {
+          num = BigInt(value);
+        }
+      } else {
+        num = BigInt(value || 0);
+      }
+
+      return num.toLocaleString("en-US");
+    },
     goToTransactions() {
       this.$router.push("/transactions");
     },
@@ -277,6 +318,14 @@ h1 {
 .fee {
   color: #f59e0b;
   font-weight: bold;
+}
+
+.natoshi-info {
+  display: block;
+  font-size: 0.75rem;
+  color: #999;
+  font-weight: normal;
+  margin-top: 0.25rem;
 }
 
 .total {
@@ -372,6 +421,15 @@ h1 {
   border-radius: 8px;
   margin-bottom: 2rem;
   text-align: center;
+  font-weight: bold;
+}
+
+.coinbase-banner {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.coinbase-from {
+  color: #f59e0b;
   font-weight: bold;
 }
 </style>

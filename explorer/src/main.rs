@@ -28,11 +28,16 @@ async fn main() -> std::io::Result<()> {
         let rpc_client = NodeRpcClient::new("http://127.0.0.1:8333");
 
         // 서버 시작 직후 즉시 첫 번째 동기화 수행
-        match rpc_client.fetch_blockchain_with_transactions().await {
+        let mut utxo_map = app_state_sync.lock().unwrap().utxo_map.clone();
+        match rpc_client
+            .fetch_blockchain_with_transactions(&mut utxo_map)
+            .await
+        {
             Ok((blocks, transactions)) => {
                 let mut state = app_state_sync.lock().unwrap();
                 state.cached_blocks = blocks.clone();
                 state.cached_transactions = transactions;
+                state.utxo_map = utxo_map;
                 state.last_update = chrono::Utc::now();
 
                 info!(
@@ -53,11 +58,16 @@ async fn main() -> std::io::Result<()> {
             sync_interval.tick().await;
 
             // Node에서 실제 블록체인 데이터 가져오기
-            match rpc_client.fetch_blockchain_with_transactions().await {
+            let mut utxo_map = app_state_sync.lock().unwrap().utxo_map.clone();
+            match rpc_client
+                .fetch_blockchain_with_transactions(&mut utxo_map)
+                .await
+            {
                 Ok((blocks, transactions)) => {
                     let mut state = app_state_sync.lock().unwrap();
                     state.cached_blocks = blocks;
                     state.cached_transactions = transactions;
+                    state.utxo_map = utxo_map;
                     state.last_update = chrono::Utc::now();
 
                     info!(

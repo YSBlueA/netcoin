@@ -210,11 +210,36 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
         return;
     }
 
+    // Calculate estimated transaction size and fee
+    // Typical transaction structure:
+    // - Base: ~100 bytes
+    // - Per input: ~100 bytes (txid, vout, pubkey, signature)
+    // - Per output: ~50 bytes (address, amount)
+    let estimated_tx_size = 100 + (selected_inputs.len() * 100) + (2 * 50); // Assume 2 outputs max
+    let fee = netcoin_core::config::calculate_default_fee(estimated_tx_size);
+
+    println!("📊 Transaction Details:");
+    println!("   Inputs: {} UTXO(s)", selected_inputs.len());
+    println!("   Estimated size: {} bytes", estimated_tx_size);
+    println!("   Fee: {} NTC ({} natoshi)", natoshi_to_ntc(fee), fee);
+
+    // Check if we have enough for amount + fee
+    if input_sum < amount_natoshi + fee {
+        println!(
+            "❌ Insufficient balance for amount + fee: have {} NTC, need {} NTC",
+            natoshi_to_ntc(input_sum),
+            natoshi_to_ntc(amount_natoshi + fee)
+        );
+        return;
+    }
+
     let mut outputs = vec![TransactionOutput::new(to.to_string(), amount_natoshi)];
 
-    let change = input_sum - amount_natoshi;
+    let change = input_sum - amount_natoshi - fee;
     if change > U256::zero() {
         outputs.push(TransactionOutput::new(wallet.address.clone(), change));
+    } else {
+        println!("   No change (exact amount + fee)");
     }
 
     let mut tx = Transaction {
@@ -254,6 +279,7 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
     println!("   TXID (internal): {}", tx.txid);
     println!("   ETH Hash (external): {}", tx.eth_hash);
     println!("   Amount: {} NTC", natoshi_to_ntc(amount_natoshi));
+    println!("   Fee: {} NTC ({} natoshi)", natoshi_to_ntc(fee), fee);
     if change > U256::zero() {
         println!("   Change: {} NTC", natoshi_to_ntc(change));
     }

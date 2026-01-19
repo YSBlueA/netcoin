@@ -27,7 +27,7 @@
       <div class="stat-card">
         <div class="stat-label">총 거래량</div>
         <div class="stat-value">
-          {{ formatAmount(stats.total_volume) }}
+          {{ formatVolumeAmount(stats.total_volume) }}
         </div>
       </div>
       <div class="stat-card">
@@ -69,7 +69,11 @@
             @click="goToTransaction(tx.hash)"
           >
             <div class="item-header">
-              <span class="tx-hash">{{ truncateHash(tx.hash) }}</span>
+              <span class="tx-hash">
+                <span v-if="tx.from === 'Block_Reward'" class="tx-type-badge coinbase">⛏️ 채굴</span>
+                <span v-else class="tx-type-badge transfer">💸 전송</span>
+                {{ truncateHash(tx.hash) }}
+              </span>
               <span class="timestamp">{{ formatTime(tx.timestamp) }}</span>
             </div>
             <div class="item-detail">
@@ -172,6 +176,28 @@ export default {
         minimumFractionDigits: 0,
         maximumFractionDigits: 18,
       });
+    },
+    formatVolumeAmount(value) {
+      // 총 거래량 전용 포맷 (소수점 없이)
+      let num;
+      
+      if (Array.isArray(value)) {
+        num = BigInt(value[0]) + (BigInt(value[1]) << BigInt(64)) +
+              (BigInt(value[2]) << BigInt(128)) + (BigInt(value[3]) << BigInt(192));
+      } else if (typeof value === "string") {
+        if (value.startsWith("0x")) {
+          num = BigInt(value);
+        } else {
+          num = BigInt(value);
+        }
+      } else {
+        num = BigInt(value || 0);
+      }
+
+      const divisor = BigInt("1000000000000000000"); // 10^18
+      const ntc = Math.floor(Number(num) / Number(divisor));
+
+      return ntc.toLocaleString("en-US");
     },
     truncateHash(hash) {
       return hash.substring(0, 8) + "..." + hash.substring(hash.length - 8);
@@ -320,6 +346,26 @@ export default {
 .block-height,
 .tx-hash {
   color: #667eea;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tx-type-badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.tx-type-badge.coinbase {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+}
+
+.tx-type-badge.transfer {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
 }
 
 .timestamp {

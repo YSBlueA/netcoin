@@ -6,7 +6,7 @@ use primitive_types::U256;
 
 /// Security constants
 pub const MAX_TX_SIZE: usize = 100_000; // 100KB max transaction size
-pub const MIN_OUTPUT_VALUE: u64 = 100; // Minimum output to prevent dust
+pub const MIN_OUTPUT_VALUE: u64 = 1_000_000_000_000; // 1 Twei (0.000001 NTC) minimum to prevent dust
 pub const MAX_TX_INPUTS: usize = 1000; // Prevent huge transactions
 pub const MAX_TX_OUTPUTS: usize = 1000;
 pub const MAX_FUTURE_TIMESTAMP: i64 = 7200; // 2 hours tolerance

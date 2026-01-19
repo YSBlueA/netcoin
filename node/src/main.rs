@@ -8,7 +8,8 @@ use netcoin_core::block;
 use netcoin_core::block::{Block, BlockHeader, compute_header_hash, compute_merkle_root};
 use netcoin_core::config::{calculate_block_reward, initial_block_reward};
 use netcoin_core::consensus;
-use netcoin_core::transaction::Transaction;
+use netcoin_core::transaction::{BINCODE_CONFIG, Transaction};
+use netcoin_core::utxo::Utxo;
 use netcoin_node::NodeHandle;
 use netcoin_node::NodeState;
 use netcoin_node::p2p::service::P2PService;
@@ -329,7 +330,7 @@ async fn start_services(node_handle: NodeHandle, miner_address: String) {
         cancel_flag.store(false, OtherOrdering::SeqCst);
 
         // Snapshot pending txs + mining params while holding the lock briefly
-        let (snapshot_txs, difficulty, prev_hash, index_snapshot, p2p_handle) = {
+        let (snapshot_txs, difficulty, prev_hash, index_snapshot, p2p_handle, total_fees) = {
             let mut state = node_handle.lock().unwrap();
 
             // clone pending transactions to work on them outside the lock
@@ -351,10 +352,48 @@ async fn start_services(node_handle: NodeHandle, miner_address: String) {
                 next_index = 0;
             }
 
+            // Calculate total fees from pending transactions
+            let mut fee_sum = U256::zero();
+            for tx in &txs_copy {
+                // Calculate fee: input_sum - output_sum
+                let mut input_sum = U256::zero();
+                let mut output_sum = U256::zero();
+
+                // Sum inputs (from UTXO)
+                for inp in &tx.inputs {
+                    let ukey = format!("u:{}:{}", inp.txid, inp.vout);
+                    if let Ok(Some(blob)) = state.bc.db.get(ukey.as_bytes()) {
+                        if let Ok((utxo, _)) =
+                            bincode::decode_from_slice::<Utxo, _>(&blob, *BINCODE_CONFIG)
+                        {
+                            input_sum += utxo.amount();
+                        }
+                    }
+                }
+
+                // Sum outputs
+                for out in &tx.outputs {
+                    output_sum += out.amount();
+                }
+
+                // Fee is the difference
+                if input_sum >= output_sum {
+                    let fee = input_sum - output_sum;
+                    fee_sum += fee;
+                }
+            }
+
             // clear pending locally — we'll requeue on failure
             state.pending.clear();
 
-            (txs_copy, diff, prev_hash, next_index, state.p2p.clone())
+            (
+                txs_copy,
+                diff,
+                prev_hash,
+                next_index,
+                state.p2p.clone(),
+                fee_sum,
+            )
         };
 
         // prepare block transactions: coinbase + pending
@@ -362,13 +401,28 @@ async fn start_services(node_handle: NodeHandle, miner_address: String) {
         let block_txs_for_logging = snapshot_txs.len();
         println!("⛏️ Mining {} pending tx(s)...", block_txs_for_logging);
 
+        // Coinbase reward = block reward + total fees
+        let base_reward = current_block_reward_snapshot();
+        let coinbase_reward = base_reward + total_fees;
+
+        if total_fees > U256::zero() {
+            let fees_ntc = total_fees / U256::from(1_000_000_000_000_000_000u64);
+            println!(
+                "💰 Total fees in block: {} wei ({} NTC)",
+                total_fees, fees_ntc
+            );
+        }
+        println!(
+            "💎 Coinbase reward: {} (base: {} + fees: {})",
+            coinbase_reward, base_reward, total_fees
+        );
+
         // prepare parameters for blocking mining call
         let prev_hash = prev_hash.clone();
         let difficulty_local = difficulty;
         let index_local = index_snapshot;
         let miner_addr_cloned = miner_address.clone();
         let txs_cloned = snapshot_txs.clone();
-        let coinbase_reward = current_block_reward_snapshot();
         let cancel_for_thread = cancel_flag.clone();
 
         // Run CPU-bound mining in a blocking task so we don't block the tokio runtime

@@ -6,6 +6,7 @@
       <table>
         <thead>
           <tr>
+            <th>타입</th>
             <th>해시</th>
             <th>보낸 주소</th>
             <th>받는 주소</th>
@@ -22,6 +23,10 @@
             @click="goToTransactionDetail(tx.hash)"
             class="table-row"
           >
+            <td class="tx-type">
+              <span v-if="tx.from === 'Block_Reward'" class="tx-badge coinbase" title="채굴 보상">⛏️</span>
+              <span v-else class="tx-badge transfer" title="일반 전송">💸</span>
+            </td>
             <td class="hash">{{ truncateHash(tx.hash) }}</td>
             <td class="address">{{ truncateAddress(tx.from) }}</td>
             <td class="address">{{ truncateAddress(tx.to) }}</td>
@@ -193,6 +198,24 @@ td {
 
 .table-row:hover {
   background-color: #f8f9ff;
+}
+
+.tx-type {
+  text-align: center;
+  width: 50px;
+}
+
+.tx-badge {
+  font-size: 1.2rem;
+  cursor: help;
+}
+
+.tx-badge.coinbase {
+  filter: drop-shadow(0 0 2px #f59e0b);
+}
+
+.tx-badge.transfer {
+  filter: drop-shadow(0 0 2px #667eea);
 }
 
 .hash {

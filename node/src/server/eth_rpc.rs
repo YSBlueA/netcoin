@@ -672,7 +672,7 @@ async fn convert_eth_to_utxo_transaction(
     // Verify fee is sufficient
     if fee_from_eth < min_fee_required {
         return Err(format!(
-            "Insufficient fee: provided {} natoshi, but need {} natoshi (base 100k + {} bytes × 100 nat/byte)",
+            "Insufficient fee: provided {} natoshi, but need {} natoshi (base 100 Twei + {} bytes × 200 Gwei/byte)",
             fee_from_eth, min_fee_required, actual_tx_size
         ));
     }
@@ -740,8 +740,8 @@ async fn eth_get_transaction_by_hash(
                         "from": tx.inputs.get(0).map(|i| &i.pubkey).unwrap_or(&String::new()).clone(),
                         "to": tx.outputs.get(0).map(|o| &o.to).unwrap_or(&String::new()).clone(),
                         "value": format!("0x{:x}", amount),
-                        "gasPrice": "0x0",
-                        "gas": "0x0",
+                        "gasPrice": "0x2540be400", // 10 Gwei
+                        "gas": "0x5208", // 21000 gas
                         "input": "0x",
                     }),
                 );
@@ -827,7 +827,7 @@ async fn eth_get_transaction_receipt(
                         "logs": [],
                         "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
                         "status": "0x1",
-                        "effectiveGasPrice": "0x1e", // 30 natoshi/gas
+                        "effectiveGasPrice": "0x2540be400", // 10 Gwei (10,000,000,000 natoshi/gas)
                     });
 
                     log::info!("📤 Returning receipt: {:?}", receipt);
@@ -853,27 +853,31 @@ async fn eth_get_transaction_receipt(
 }
 
 fn eth_gas_price(id: Value) -> JsonRpcResponse {
-    // NetCoin fee structure:
-    // - Base fee: 100,000 natoshi
-    // - Per-byte fee: 100-200 natoshi/byte
-    // - Typical UTXO tx size: ~4000-5000 bytes
-    // - Total typical fee: ~500,000-600,000 natoshi
+    // NetCoin fee structure (EVM-compatible 18 decimals):
+    // - Base fee: 100,000,000,000,000 natoshi (100 Twei = 0.0001 NTC)
+    // - Per-byte fee: 200,000,000,000 natoshi/byte (200 Gwei/byte)
+    // - Typical UTXO tx size: ~300-1000 bytes
+    // - Total typical fee: ~160,000,000,000,000-300,000,000,000,000 natoshi
     //
     // For Ethereum compatibility:
     // - Standard transfer gas: 21,000
-    // - We need: gasPrice × 21,000 ≥ 600,000 natoshi
-    // - gasPrice should be: 600,000 / 21,000 = ~28.57 natoshi/gas
-    // - Use 30 natoshi/gas for safety margin (0x1e in hex)
+    // - Target fee for 300 byte tx: ~160,000,000,000,000 natoshi
+    // - Required gasPrice: 160,000,000,000,000 / 21,000 = ~7,619,047,619 natoshi/gas
+    // - Use 10,000,000,000 (10 Gwei) for safety margin
     //
-    // This gives: 21,000 × 30 = 630,000 natoshi total fee
-    JsonRpcResponse::success(id, json!("0x1e")) // 30 natoshi per gas
+    // This gives: 21,000 × 10,000,000,000 = 210,000,000,000,000 natoshi (~0.00021 NTC)
+    // Hex: 10,000,000,000 = 0x2540BE400
+    JsonRpcResponse::success(id, json!("0x2540be400")) // 10 Gwei (10,000,000,000 natoshi/gas)
 }
 
 fn eth_estimate_gas(id: Value) -> JsonRpcResponse {
-    // Standard Ethereum transfer gas amount
-    // Combined with gasPrice of 30, this gives 630,000 natoshi fee
-    // which covers typical NetCoin UTXO transaction fees
-    JsonRpcResponse::success(id, json!("0x5208")) // 21,000 gas (standard transfer)
+    // NetCoin UTXO transactions are larger than Ethereum account model
+    // Typical UTXO tx size: 300-1000 bytes
+    // Required fee for 1000 byte tx: 100 Twei + (1000 × 200 Gwei) = 300 Twei
+    // With gasPrice of 10 Gwei: 300 Twei ÷ 10 Gwei = 30,000 gas
+    // Use 50,000 gas for safety margin (covers up to 1450 byte transactions)
+    // Total fee: 50,000 × 10 Gwei = 500 Twei (0.0005 NTC)
+    JsonRpcResponse::success(id, json!("0xc350")) // 50,000 gas (UTXO transaction)
 }
 
 async fn eth_get_block_by_number(
