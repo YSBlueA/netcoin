@@ -90,12 +90,69 @@ impl P2PService {
             let nh_async = nh2.clone();
             tokio::spawn(async move {
                 let mut state = nh_async.lock().unwrap();
+
+                // Cancel ongoing mining when receiving a new block
+                state
+                    .mining_cancel_flag
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+
                 match state.bc.validate_and_insert_block(&block) {
                     Ok(_) => {
-                        info!("Block added via p2p");
-                        state.blockchain.push(block);
+                        info!(
+                            "✅ Block added via p2p: index={} hash={}",
+                            block.header.index, block.hash
+                        );
+                        state.blockchain.push(block.clone());
+
+                        // Remove transactions from pending pool that are in the new block
+                        let block_txids: std::collections::HashSet<String> = block
+                            .transactions
+                            .iter()
+                            .map(|tx| tx.txid.clone())
+                            .collect();
+
+                        let removed_count = block_txids.len().saturating_sub(1); // -1 for coinbase
+                        state.pending.retain(|tx| !block_txids.contains(&tx.txid));
+
+                        if removed_count > 0 {
+                            info!(
+                                "🗑️  Removed {} transactions from mempool (included in peer block)",
+                                removed_count
+                            );
+                        }
+                        info!("⛏️  Mining cancelled, restarting with updated chain...");
                     }
-                    Err(e) => warn!("Invalid block from p2p: {:?}", e),
+                    Err(e) => warn!("❌ Invalid block from p2p: {:?}", e),
+                }
+            });
+        });
+
+        // transaction handler
+        let nh3 = node_handle.clone();
+        p2p.set_on_tx(move |tx: netcoin_core::transaction::Transaction| {
+            let nh_async = nh3.clone();
+            tokio::spawn(async move {
+                let mut state = nh_async.lock().unwrap();
+
+                // Check if transaction already exists in pending pool
+                if state.pending.iter().any(|t| t.txid == tx.txid) {
+                    info!("Transaction {} already in mempool, skipping", tx.txid);
+                    return;
+                }
+
+                // Validate transaction signatures
+                match tx.verify_signatures() {
+                    Ok(true) => {
+                        info!("✅ Transaction {} received and validated from p2p", tx.txid);
+                        state.pending.push(tx);
+                        info!("📝 Mempool size: {} transactions", state.pending.len());
+                    }
+                    Ok(false) => {
+                        warn!("❌ Invalid transaction signature: {}", tx.txid);
+                    }
+                    Err(e) => {
+                        warn!("❌ Transaction validation error {}: {:?}", tx.txid, e);
+                    }
                 }
             });
         });

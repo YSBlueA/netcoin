@@ -63,6 +63,8 @@ async fn main() {
     // Initialize P2P networking
     let p2p_service = P2PService::new();
 
+    let mining_cancel_flag = Arc::new(AtomicBool::new(false));
+
     let node = NodeState {
         bc,
         blockchain: vec![],
@@ -70,6 +72,7 @@ async fn main() {
         seen_tx: HashSet::new(),
         p2p: p2p_service.manager(),
         eth_to_netcoin_tx: HashMap::new(),
+        mining_cancel_flag: mining_cancel_flag.clone(),
     };
 
     let node_handle = Arc::new(Mutex::new(node));
@@ -322,23 +325,29 @@ async fn start_services(node_handle: NodeHandle, miner_address: String) {
     };
 
     println!("🚀 mining starting...");
-    let cancel_flag = Arc::new(AtomicBool::new(false));
-    let cancel_flag_net = cancel_flag.clone();
 
     // mining/miner loop: every 10s attempt to mine pending txs
     loop {
-        cancel_flag.store(false, OtherOrdering::SeqCst);
-
         // Snapshot pending txs + mining params while holding the lock briefly
-        let (snapshot_txs, difficulty, prev_hash, index_snapshot, p2p_handle, total_fees) = {
+        let (
+            snapshot_txs,
+            difficulty,
+            prev_hash,
+            index_snapshot,
+            p2p_handle,
+            total_fees,
+            cancel_flag,
+        ) = {
             let mut state = node_handle.lock().unwrap();
+
+            // Reset cancel flag at the start of each mining round
+            state.mining_cancel_flag.store(false, OtherOrdering::SeqCst);
 
             // clone pending transactions to work on them outside the lock
             let txs_copy = state.pending.clone();
 
             // previous tip hash
             let prev_hash = state.bc.chain_tip.clone().unwrap_or_else(|| "0".repeat(64));
-            let diff = state.bc.difficulty;
 
             // determine next index from tip header (so header.index is known before mining)
             let mut next_index: u64 = 0;
@@ -350,6 +359,19 @@ async fn start_services(node_handle: NodeHandle, miner_address: String) {
                 }
             } else {
                 next_index = 0;
+            }
+
+            // Calculate difficulty for the next block (dynamic adjustment every 30 blocks)
+            let diff = state
+                .bc
+                .calculate_adjusted_difficulty(next_index)
+                .unwrap_or(state.bc.difficulty);
+
+            if diff != state.bc.difficulty {
+                println!(
+                    "📊 Difficulty adjusted: {} -> {} (block #{})",
+                    state.bc.difficulty, diff, next_index
+                );
             }
 
             // Calculate total fees from pending transactions
@@ -393,6 +415,7 @@ async fn start_services(node_handle: NodeHandle, miner_address: String) {
                 next_index,
                 state.p2p.clone(),
                 fee_sum,
+                state.mining_cancel_flag.clone(),
             )
         };
 

@@ -18,6 +18,8 @@ pub struct NodeState {
     pub p2p: Arc<PeerManager>,
     /// Maps Ethereum transaction hash to NetCoin UTXO txid (for MetaMask compatibility)
     pub eth_to_netcoin_tx: HashMap<String, String>,
+    /// Flag to cancel ongoing mining when a new block is received from network
+    pub mining_cancel_flag: Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub type NodeHandle = Arc<Mutex<NodeState>>;

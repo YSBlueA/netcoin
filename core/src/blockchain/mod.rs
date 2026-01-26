@@ -35,8 +35,8 @@ impl Blockchain {
         Ok(Blockchain {
             db,
             chain_tip,
-            difficulty: 2, /*16*/
-            block_interval: 60,
+            difficulty: 2,       /*16*/
+            block_interval: 120, // Target: 2 minutes per block
         }) // default difficulty (bits like count leading zeros)
     }
 
@@ -277,6 +277,22 @@ impl Blockchain {
         // commit
         put_batch(&self.db, batch)?;
         self.chain_tip = Some(block.hash.clone());
+
+        // Adjust difficulty every 30 blocks
+        let next_index = block.header.index + 1;
+        if let Ok(new_difficulty) = self.calculate_adjusted_difficulty(next_index) {
+            if new_difficulty != self.difficulty {
+                log::info!(
+                    "Difficulty updated for next block ({}): {} -> {}",
+                    next_index,
+                    self.difficulty,
+                    new_difficulty
+                );
+                // Update in-memory difficulty for next mining round
+                self.difficulty = new_difficulty;
+            }
+        }
+
         Ok(())
     }
 
@@ -313,6 +329,108 @@ impl Blockchain {
             }
         }
         Ok(0)
+    }
+
+    /// Calculate adjusted difficulty based on recent block times
+    /// Adjustment period: every 30 blocks
+    /// Target: 120 seconds per block (2 minutes)
+    /// Bitcoin-style: Conservative adjustment with max ±1 change per period
+    pub fn calculate_adjusted_difficulty(&self, current_index: u64) -> Result<u32> {
+        const ADJUSTMENT_INTERVAL: u64 = 30; // Adjust every 30 blocks
+        const MIN_DIFFICULTY: u32 = 1;
+        const MAX_DIFFICULTY: u32 = 10; // Reduced from 32
+
+        // No adjustment needed for early blocks
+        if current_index < ADJUSTMENT_INTERVAL {
+            return Ok(self.difficulty);
+        }
+
+        // Only adjust at interval boundaries
+        if current_index % ADJUSTMENT_INTERVAL != 0 {
+            return Ok(self.difficulty);
+        }
+
+        // Get the block at adjustment boundary (30 blocks ago)
+        let start_index = current_index - ADJUSTMENT_INTERVAL;
+        let start_hash = self.db.get(format!("i:{}", start_index).as_bytes())?;
+        let end_hash = self.db.get(format!("i:{}", current_index - 1).as_bytes())?;
+
+        if start_hash.is_none() || end_hash.is_none() {
+            log::warn!("Cannot find blocks for difficulty adjustment");
+            return Ok(self.difficulty);
+        }
+
+        let start_hash_str = String::from_utf8(start_hash.unwrap())?;
+        let end_hash_str = String::from_utf8(end_hash.unwrap())?;
+
+        let start_header = self.load_header(&start_hash_str)?;
+        let end_header = self.load_header(&end_hash_str)?;
+
+        if start_header.is_none() || end_header.is_none() {
+            log::warn!("Cannot load headers for difficulty adjustment");
+            return Ok(self.difficulty);
+        }
+
+        let start_time = start_header.unwrap().timestamp;
+        let end_time = end_header.unwrap().timestamp;
+
+        // Calculate actual time taken for the last 30 blocks
+        let actual_time = end_time - start_time;
+        let target_time = self.block_interval * ADJUSTMENT_INTERVAL as i64; // 120s × 30 = 3600s (1 hour)
+
+        log::info!(
+            "Difficulty adjustment at block {}: actual={}s, target={}s, avg={:.1}s/block",
+            current_index,
+            actual_time,
+            target_time,
+            actual_time as f64 / ADJUSTMENT_INTERVAL as f64
+        );
+
+        // Bitcoin-style conservative adjustment
+        // Problem: difficulty is "leading zeros count", so each +1 = 16x harder!
+        // Solution: Only adjust by ±1, with damping based on ratio
+        let current_difficulty = self.difficulty;
+
+        // Calculate how far off we are from target
+        let ratio = actual_time as f64 / target_time as f64;
+
+        let new_difficulty = if ratio < 0.5 {
+            // Blocks are >2x too fast - increase difficulty by 1
+            current_difficulty.saturating_add(1)
+        } else if ratio < 0.75 {
+            // Blocks are 25-50% too fast - increase difficulty by 1
+            current_difficulty.saturating_add(1)
+        } else if ratio > 2.0 {
+            // Blocks are >2x too slow - decrease difficulty by 1
+            current_difficulty.saturating_sub(1).max(1)
+        } else if ratio > 1.5 {
+            // Blocks are 50-100% too slow - decrease difficulty by 1
+            current_difficulty.saturating_sub(1).max(1)
+        } else {
+            // Within ±50% of target - no change
+            current_difficulty
+        };
+
+        let final_difficulty = new_difficulty.clamp(MIN_DIFFICULTY, MAX_DIFFICULTY);
+
+        if final_difficulty != current_difficulty {
+            log::info!(
+                "Difficulty adjusted: {} -> {} (ratio: {:.2}x target, avg: {:.1}s/block vs target: {}s/block)",
+                current_difficulty,
+                final_difficulty,
+                ratio,
+                actual_time as f64 / ADJUSTMENT_INTERVAL as f64,
+                self.block_interval
+            );
+        } else {
+            log::info!(
+                "Difficulty unchanged: {} (ratio: {:.2}x, within acceptable range)",
+                current_difficulty,
+                ratio
+            );
+        }
+
+        Ok(final_difficulty)
     }
 
     /// Find a valid nonce by updating header.nonce and computing header hash.

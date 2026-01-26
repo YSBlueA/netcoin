@@ -34,6 +34,8 @@ pub struct PeerManager {
     my_height: Arc<Mutex<u64>>,
     /// callback when a new block is received
     on_block: Arc<Mutex<Option<Arc<dyn Fn(block::Block) + Send + Sync>>>>,
+    /// callback when a new transaction is received
+    on_tx: Arc<Mutex<Option<Arc<dyn Fn(Transaction) + Send + Sync>>>>,
     on_getheaders: Arc<
         Mutex<
             Option<
@@ -50,6 +52,7 @@ impl PeerManager {
             peer_heights: Arc::new(Mutex::new(HashMap::new())),
             my_height: Arc::new(Mutex::new(0)),
             on_block: Arc::new(Mutex::new(None)),
+            on_tx: Arc::new(Mutex::new(None)),
             on_getheaders: Arc::new(Mutex::new(None)),
         }
     }
@@ -59,6 +62,13 @@ impl PeerManager {
         F: Fn(block::Block) + Send + Sync + 'static,
     {
         *self.on_block.lock() = Some(Arc::new(cb));
+    }
+
+    pub fn set_on_tx<F>(&self, cb: F)
+    where
+        F: Fn(Transaction) + Send + Sync + 'static,
+    {
+        *self.on_tx.lock() = Some(Arc::new(cb));
     }
 
     pub fn set_on_getheaders<F>(&self, cb: F)
@@ -338,6 +348,13 @@ impl PeerManager {
                 info!("{} sent block {}", peer_id, block.hash);
                 if let Some(cb) = &*self.on_block.lock() {
                     (cb)(block);
+                }
+            }
+
+            Tx { tx } => {
+                info!("{} sent transaction {}", peer_id, tx.txid);
+                if let Some(cb) = &*self.on_tx.lock() {
+                    (cb)(tx);
                 }
             }
 
