@@ -188,14 +188,16 @@ impl Blockchain {
             ));
         }
 
-        // 3) Difficulty adjustment: verify block uses correct difficulty
-        let expected_difficulty = self.calculate_adjusted_difficulty(block.header.index)?;
-        if block.header.difficulty != expected_difficulty {
+        // 3) Difficulty check: verify block uses current blockchain difficulty
+        // Note: We don't recalculate difficulty here because it may have changed
+        // between when mining started and when the block is inserted.
+        // Instead, we verify the block uses the difficulty that was set when mining began.
+        if block.header.difficulty != self.difficulty {
             return Err(anyhow!(
-                "incorrect difficulty at block {}: got {}, expected {} (hash rate adjustment)",
+                "incorrect difficulty at block {}: got {}, expected {} (current blockchain difficulty)",
                 block.header.index,
                 block.header.difficulty,
-                expected_difficulty
+                self.difficulty
             ));
         }
 
@@ -589,6 +591,42 @@ impl Blockchain {
         let mut index = 0u64;
 
         loop {
+            let key = format!("i:{}", index);
+            match self.db.get(key.as_bytes())? {
+                Some(hash_bytes) => {
+                    let hash = String::from_utf8(hash_bytes)?;
+
+                    // Load complete block (with transactions) by hash
+                    if let Some(blob) = self.db.get(format!("b:{}", hash).as_bytes())? {
+                        let (block, _): (Block, usize) =
+                            bincode::decode_from_slice(&blob, *BINCODE_CONFIG)?;
+                        blocks.push(block);
+                    }
+                    index += 1;
+                }
+                None => {
+                    // No more blocks at this index
+                    break;
+                }
+            }
+        }
+
+        Ok(blocks)
+    }
+
+    /// Get blocks in a specific height range (inclusive)
+    pub fn get_blocks_range(&self, from_height: u64, to_height: Option<u64>) -> Result<Vec<Block>> {
+        let mut blocks = Vec::new();
+        let mut index = from_height;
+
+        loop {
+            // Stop if we've reached the to_height limit
+            if let Some(to) = to_height {
+                if index > to {
+                    break;
+                }
+            }
+
             let key = format!("i:{}", index);
             match self.db.get(key.as_bytes())? {
                 Some(hash_bytes) => {

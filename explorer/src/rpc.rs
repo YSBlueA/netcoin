@@ -168,12 +168,13 @@ impl NodeRpcClient {
         }
     }
 
-    /// 블록체인 전체 조회 (DB에서 직접, 블록 + 트랜잭션)
-    pub async fn fetch_blockchain_with_transactions(
+    /// 특정 높이 범위의 블록 조회
+    pub async fn fetch_blocks_range(
         &self,
+        from_height: u64,
         existing_utxo_map: &mut std::collections::HashMap<(String, u32), primitive_types::U256>,
     ) -> Result<(Vec<BlockInfo>, Vec<TransactionInfo>), String> {
-        let url = format!("{}/blockchain/db", self.node_url);
+        let url = format!("{}/blockchain/range?from={}", self.node_url, from_height);
 
         match reqwest::get(&url).await {
             Ok(response) => match response.json::<serde_json::Value>().await {
@@ -186,8 +187,9 @@ impl NodeRpcClient {
                                 let transactions =
                                     self.extract_transactions(&raw_blocks, existing_utxo_map);
                                 info!(
-                                    "✅ Fetched {} blocks and {} transactions from Node",
+                                    "✅ Fetched {} blocks (from height {}) and {} transactions from Node",
                                     blocks.len(),
+                                    from_height,
                                     transactions.len()
                                 );
                                 Ok((blocks, transactions))
@@ -198,8 +200,8 @@ impl NodeRpcClient {
                             }
                         }
                     } else {
-                        error!("No blockchain data in response");
-                        Err("No blockchain data in response".to_string())
+                        // 데이터가 없으면 빈 결과 반환 (정상)
+                        Ok((vec![], vec![]))
                     }
                 }
                 Err(e) => {
@@ -207,6 +209,78 @@ impl NodeRpcClient {
                     Err(format!("Parse error: {}", e))
                 }
             },
+            Err(e) => {
+                error!("Failed to fetch from Node: {}", e);
+                Err(format!(
+                    "Network error: {}. Make sure Node is running on {}",
+                    e, self.node_url
+                ))
+            }
+        }
+    }
+
+    /// 블록체인 전체 조회 (DB에서 직접, 블록 + 트랜잭션)
+    pub async fn fetch_blockchain_with_transactions(
+        &self,
+        existing_utxo_map: &mut std::collections::HashMap<(String, u32), primitive_types::U256>,
+    ) -> Result<(Vec<BlockInfo>, Vec<TransactionInfo>), String> {
+        let url = format!("{}/blockchain/db", self.node_url);
+
+        info!("🔗 Fetching blockchain from: {}", url);
+
+        match reqwest::get(&url).await {
+            Ok(response) => {
+                let status = response.status();
+                info!("📡 Node response status: {}", status);
+
+                match response.json::<serde_json::Value>().await {
+                    Ok(data) => {
+                        info!("📦 Response data: {:?}", data);
+
+                        if let Some(count) = data.get("count").and_then(|v| v.as_u64()) {
+                            info!("📊 Node reports {} blocks", count);
+                        }
+
+                        if let Some(encoded_blockchain) =
+                            data.get("blockchain").and_then(|v| v.as_str())
+                        {
+                            info!(
+                                "✅ Found blockchain data (encoded length: {})",
+                                encoded_blockchain.len()
+                            );
+
+                            if encoded_blockchain.is_empty() {
+                                info!("⚠️ Blockchain data is empty");
+                                return Ok((vec![], vec![]));
+                            }
+
+                            match self.decode_blockchain(encoded_blockchain) {
+                                Ok((blocks, raw_blocks)) => {
+                                    let transactions =
+                                        self.extract_transactions(&raw_blocks, existing_utxo_map);
+                                    info!(
+                                        "✅ Fetched {} blocks and {} transactions from Node",
+                                        blocks.len(),
+                                        transactions.len()
+                                    );
+                                    Ok((blocks, transactions))
+                                }
+                                Err(e) => {
+                                    error!("Failed to decode blockchain: {}", e);
+                                    Err(e)
+                                }
+                            }
+                        } else {
+                            error!("❌ No 'blockchain' field in response");
+                            Err("No blockchain data in response".to_string())
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to parse blockchain response: {}", e);
+                        Err(format!("Parse error: {}", e))
+                    }
+                }
+            }
             Err(e) => {
                 error!("Failed to fetch from Node: {}", e);
                 Err(format!(

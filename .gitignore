@@ -64,3 +64,5 @@ explorer/web/.env.*.local
 /out/
 /build/
 
+# == data ===
+explorer/explorer_data/

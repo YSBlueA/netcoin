@@ -480,7 +480,9 @@ async fn fetch_best_nodes_from_dns(
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let dns_url =
         std::env::var("DNS_SERVER_URL").unwrap_or_else(|_| "http://localhost:8053".to_string());
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5)) // 5초 타임아웃
+        .build()?;
     let nodes_url = format!("{}/nodes?limit={}", dns_url, limit * 3); // Fetch more to test latency
 
     info!("Fetching best nodes from DNS server at {}", dns_url);
@@ -619,7 +621,9 @@ async fn register_with_dns(node_handle: NodeHandle) -> Result<(), Box<dyn std::e
         }
     };
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5)) // 5초 타임아웃
+        .build()?;
     let register_url = format!("{}/register", dns_url);
 
     let payload = serde_json::json!({
@@ -852,6 +856,8 @@ async fn mining_loop(
                     "📊 Difficulty adjusted: {} -> {} (block #{})",
                     state.bc.difficulty, diff, next_index
                 );
+                // Update blockchain difficulty before mining
+                state.bc.difficulty = diff;
             }
 
             // Update current difficulty in state
@@ -951,25 +957,13 @@ async fn mining_loop(
         .expect("mining task panicked");
 
         match mined_block_res {
-            Ok(mut block) => {
-                // Re-acquire lock to insert block atomically and to handle concurrent tip changes
+            Ok(block) => {
+                // Re-acquire lock to insert block atomically
                 let mut state = node_handle.lock().unwrap();
 
-                // As a safety, recompute index based on current tip in case chain advanced
-                if let Some(tip_hash) = state.bc.chain_tip.clone() {
-                    if let Ok(Some(prev_header)) = state.bc.load_header(&tip_hash) {
-                        block.header.index = prev_header.index + 1;
-                    } else {
-                        block.header.index = 0;
-                    }
-                } else {
-                    block.header.index = 0;
-                }
-
-                // update timestamp and recompute hash (index/timestamp changed)
-                block.header.timestamp = Utc::now().timestamp();
-                block.hash =
-                    compute_header_hash(&block.header).expect("recompute header hash failed");
+                // Note: We do NOT modify the mined block's timestamp or hash
+                // because that would invalidate the PoW nonce that was just found.
+                // The block is already valid as-is from mining.
 
                 match state.bc.validate_and_insert_block(&block) {
                     Ok(_) => {

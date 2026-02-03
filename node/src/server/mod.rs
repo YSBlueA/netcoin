@@ -62,6 +62,42 @@ pub async fn run_server(node: NodeHandle) {
             }
         });
 
+    // GET /blockchain/range?from=0&to=10 - Blocks from specific height range
+    let get_chain_range = warp::path!("blockchain" / "range")
+        .and(warp::get())
+        .and(warp::query::<std::collections::HashMap<String, String>>())
+        .and(node_filter.clone())
+        .and_then(|params: std::collections::HashMap<String, String>, node: NodeHandle| async move {
+            let from_height = params.get("from").and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            let to_height = params.get("to").and_then(|s| s.parse::<u64>().ok());
+            
+            let state = node.lock().unwrap();
+            match state.bc.get_blocks_range(from_height, to_height) {
+                Ok(blocks) => {
+                    let bincode_bytes = bincode::encode_to_vec(&blocks, *BINCODE_CONFIG).unwrap();
+                    let encoded = general_purpose::STANDARD.encode(&bincode_bytes);
+                    
+                    log::info!("✅ Returning {} blocks from DB (height {} to {:?})", 
+                        blocks.len(), from_height, to_height);
+                    
+                    Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
+                        "blockchain": encoded,
+                        "count": blocks.len(),
+                        "from": from_height,
+                        "to": to_height,
+                        "source": "database"
+                    })))
+                }
+                Err(e) => {
+                    log::error!("❌ Failed to fetch blocks from DB: {}", e);
+                    Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
+                        "error": format!("Failed to fetch blockchain from DB: {}", e),
+                        "count": 0
+                    })))
+                }
+            }
+        });
+
     // GET /debug/block-counts - Simple debug endpoint
     let debug_counts = warp::path!("debug" / "block-counts")
         .and(warp::get())
@@ -593,11 +629,12 @@ pub async fn run_server(node: NodeHandle) {
 
     // -------------------------------
     // combine routes
-    // combine routes
+    // NOTE: Order matters! More specific routes must come before general ones
     let routes = dashboard
-        .or(get_chain)
-        .or(get_chain_memory)
-        .or(get_chain_db)
+        .or(get_chain_db)          // /blockchain/db - specific
+        .or(get_chain_memory)      // /blockchain/memory - specific
+        .or(get_chain_range)       // /blockchain/range - specific
+        .or(get_chain)             // /blockchain - general (must be last)
         .or(get_counts)
         .or(get_status)
         .or(debug_counts)

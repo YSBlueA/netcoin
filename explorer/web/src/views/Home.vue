@@ -30,10 +30,6 @@
           {{ formatVolumeAmount(stats.total_volume) }}
         </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">평균 블록 시간</div>
-        <div class="stat-value">{{ stats.average_block_time.toFixed(1) }}s</div>
-      </div>
     </div>
 
     <div class="recent-section">

@@ -64,23 +64,3 @@ pub struct BlockchainStats {
     pub current_difficulty: u32,
     pub network_hashrate: String,
 }
-
-pub struct AppState {
-    pub cached_blocks: Vec<BlockInfo>,
-    pub cached_transactions: Vec<TransactionInfo>,
-    pub last_update: chrono::DateTime<Utc>,
-    /// UTXO 맵: (txid, vout) -> amount
-    /// 전체 블록체인의 현재 UTXO 상태를 추적
-    pub utxo_map: std::collections::HashMap<(String, u32), U256>,
-}
-
-impl AppState {
-    pub fn new() -> Self {
-        AppState {
-            cached_blocks: Vec::new(),
-            cached_transactions: Vec::new(),
-            last_update: Utc::now(),
-            utxo_map: std::collections::HashMap::new(),
-        }
-    }
-}
