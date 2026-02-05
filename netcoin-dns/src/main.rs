@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::{ConnectInfo, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
     routing::{get, post},
@@ -44,7 +44,8 @@ pub struct AppState {
 
 #[derive(Deserialize)]
 struct RegisterRequest {
-    address: String,
+    /// Optional IP address. If not provided, the server will use the client's IP
+    address: Option<String>,
     port: u16,
     version: String,
     height: u64,
@@ -55,6 +56,10 @@ struct RegisterResponse {
     success: bool,
     message: String,
     node_count: usize,
+    /// The IP address that was registered (as seen by the DNS server)
+    registered_address: String,
+    /// The port that was registered
+    registered_port: u16,
 }
 
 #[derive(Serialize)]
@@ -189,10 +194,15 @@ impl AppState {
 
 // Register a node
 async fn register_node(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> impl IntoResponse {
-    let node_id = format!("{}:{}", req.address, req.port);
+    // Use the client's IP address from the connection, or use the provided address if given
+    let client_ip = addr.ip().to_string();
+    let node_address = req.address.unwrap_or(client_ip);
+
+    let node_id = format!("{}:{}", node_address, req.port);
     let now = Utc::now().timestamp();
 
     // Check if node already exists to preserve first_seen
@@ -207,7 +217,7 @@ async fn register_node(
     };
 
     let node_info = NodeInfo {
-        address: req.address.clone(),
+        address: node_address.clone(),
         port: req.port,
         version: req.version.clone(),
         height: req.height,
@@ -228,6 +238,8 @@ async fn register_node(
         success: true,
         message: format!("Node {} registered successfully", node_id),
         node_count,
+        registered_address: node_address.clone(),
+        registered_port: req.port,
     })
 }
 
@@ -383,7 +395,11 @@ async fn main() -> anyhow::Result<()> {
     info!("DNS server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

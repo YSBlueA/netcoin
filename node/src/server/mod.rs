@@ -290,7 +290,7 @@ pub async fn run_server(node: NodeHandle) {
             let mut state = node.lock().unwrap();
 
             // 중복 방지
-            if state.seen_tx.contains(&tx.txid) {
+            if state.seen_tx.contains_key(&tx.txid) {
                 log::info!("Duplicate TX {}", tx.txid);
                 return Ok::<_, warp::Rejection>(with_status(
                     warp::reply::json(&serde_json::json!({
@@ -345,7 +345,35 @@ pub async fn run_server(node: NodeHandle) {
                         ));
                     }
 
-                    state.seen_tx.insert(tx.txid.clone());
+                    // 🔒 Security: Check for double-spending in mempool
+                    // Collect all UTXOs used by this transaction
+                    let mut tx_utxos = std::collections::HashSet::new();
+                    for inp in &tx.inputs {
+                        tx_utxos.insert(format!("{}:{}", inp.txid, inp.vout));
+                    }
+                    
+                    // Check if any pending transaction uses the same UTXOs
+                    for pending_tx in &state.pending {
+                        for pending_inp in &pending_tx.inputs {
+                            let pending_utxo = format!("{}:{}", pending_inp.txid, pending_inp.vout);
+                            if tx_utxos.contains(&pending_utxo) {
+                                log::warn!(
+                                    "Double-spend attempt: TX {} tries to use UTXO {} already used by pending TX {}",
+                                    tx.txid, pending_utxo, pending_tx.txid
+                                );
+                                return Ok::<_, warp::Rejection>(with_status(
+                                    warp::reply::json(&serde_json::json!({
+                                        "status": "error",
+                                        "message": format!("Double-spend: UTXO {} already used in mempool", pending_utxo)
+                                    })),
+                                    StatusCode::BAD_REQUEST,
+                                ));
+                            }
+                        }
+                    }
+
+                    let now = chrono::Utc::now().timestamp();
+                    state.seen_tx.insert(tx.txid.clone(), now);
                     state.pending.push(tx.clone());
 
                     // ---- broadcast to peers (async) ----
@@ -400,7 +428,7 @@ pub async fn run_server(node: NodeHandle) {
             let mut state = node.lock().unwrap();
 
             // 중복 체크
-            if state.seen_tx.contains(&tx.txid) {
+            if state.seen_tx.contains_key(&tx.txid) {
                 return Ok::<_, warp::Rejection>(with_status(
                     warp::reply::json(&serde_json::json!({"status":"duplicate"})),
                     StatusCode::OK,
@@ -408,7 +436,8 @@ pub async fn run_server(node: NodeHandle) {
             }
 
             // seen 기록
-            state.seen_tx.insert(tx.txid.clone());
+            let now = chrono::Utc::now().timestamp();
+            state.seen_tx.insert(tx.txid.clone(), now);
 
             // 검증: signature + fee
             if !tx.verify_signatures().unwrap_or(false) {

@@ -257,7 +257,7 @@ async fn eth_send_raw_transaction(
             let mut state = node.lock().unwrap();
 
             // Check if already seen
-            if state.seen_tx.contains(&netcoin_tx.txid) {
+            if state.seen_tx.contains_key(&netcoin_tx.txid) {
                 log::warn!("Transaction already seen: {}", netcoin_tx.txid);
                 return JsonRpcResponse::success(id, json!(netcoin_tx.eth_hash));
             }
@@ -268,8 +268,37 @@ async fn eth_send_raw_transaction(
                 return JsonRpcResponse::error(id, -32000, "Invalid signature".to_string());
             }
 
+            // 🔒 Security: Check for double-spending in mempool
+            let mut tx_utxos = std::collections::HashSet::new();
+            for inp in &netcoin_tx.inputs {
+                tx_utxos.insert(format!("{}:{}", inp.txid, inp.vout));
+            }
+
+            for pending_tx in &state.pending {
+                for pending_inp in &pending_tx.inputs {
+                    let pending_utxo = format!("{}:{}", pending_inp.txid, pending_inp.vout);
+                    if tx_utxos.contains(&pending_utxo) {
+                        log::warn!(
+                            "Double-spend attempt via eth_sendRawTransaction: TX {} tries to use UTXO {} already used by pending TX {}",
+                            netcoin_tx.txid,
+                            pending_utxo,
+                            pending_tx.txid
+                        );
+                        return JsonRpcResponse::error(
+                            id,
+                            -32000,
+                            format!(
+                                "Double-spend: UTXO {} already used in mempool",
+                                pending_utxo
+                            ),
+                        );
+                    }
+                }
+            }
+
             // Add to pending
-            state.seen_tx.insert(netcoin_tx.txid.clone());
+            let now = chrono::Utc::now().timestamp();
+            state.seen_tx.insert(netcoin_tx.txid.clone(), now);
             state.pending.push(netcoin_tx.clone());
 
             // Store mapping: eth_hash -> txid

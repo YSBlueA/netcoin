@@ -14,6 +14,8 @@ pub struct HandshakeInfo {
     pub network_id: String,
     pub chain_id: u64,
     pub height: u64,
+    /// Listening port of this node (to detect self-connections)
+    pub listening_port: u16,
 }
 
 /// (inv/getdata)

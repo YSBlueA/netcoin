@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -152,6 +152,7 @@
             font-size: 1.3rem;
             font-weight: 700;
             color: #2c3e50;
+            transition: all 0.3s ease;
         }
 
         .value.hash {
@@ -162,6 +163,16 @@
 
         .value.status-online {
             color: #27ae60;
+        }
+
+        .value.changed {
+            animation: valueChanged 0.6s ease;
+        }
+
+        @keyframes valueChanged {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); color: #667eea; }
+            100% { transform: scale(1); }
         }
 
         .mining-card {
@@ -337,34 +348,34 @@
 
         <div id="loading" class="loading">
             <div class="spinner"></div>
-            <p>노드 상태를 불러오는 중...</p>
+            <p>Loading node status...</p>
         </div>
 
         <div id="error" class="error-message" style="display: none;">
-            <h3>❌ 노드에 연결할 수 없습니다</h3>
+            <h3>❌ Cannot connect to node</h3>
             <p id="error-message"></p>
-            <button class="retry-btn" onclick="fetchStatus()">다시 시도</button>
+            <button class="retry-btn" onclick="fetchStatus()">Retry</button>
         </div>
 
         <div id="dashboard" class="dashboard" style="display: none;">
             <!-- Node Info -->
             <div class="card">
-                <h2>⚙️ 노드 정보</h2>
+                <h2>⚙️ Node Info</h2>
                 <div class="info-grid">
                     <div class="info-item">
-                        <span class="label">버전</span>
+                        <span class="label">Version</span>
                         <span class="value" id="node-version">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">상태</span>
-                        <span class="value status-online">🟢 온라인</span>
+                        <span class="label">Status</span>
+                        <span class="value status-online">🟢 Online</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">실행 시간</span>
+                        <span class="label">Uptime</span>
                         <span class="value" id="node-uptime">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">마지막 업데이트</span>
+                        <span class="label">Last Update</span>
                         <span class="value" id="node-timestamp">-</span>
                     </div>
                 </div>
@@ -372,22 +383,22 @@
 
             <!-- Mining Status -->
             <div class="card mining-card" id="mining-card">
-                <h2>⛏️ 채굴 상태</h2>
+                <h2>⛏️ Mining Status</h2>
                 <div class="info-grid">
                     <div class="info-item highlight">
-                        <span class="label">상태</span>
+                        <span class="label">Status</span>
                         <span class="value" id="mining-status">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">해시레이트</span>
+                        <span class="label">Hashrate</span>
                         <span class="value" id="mining-hashrate">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">현재 난이도</span>
+                        <span class="label">Difficulty</span>
                         <span class="value" id="mining-difficulty">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">채굴된 블록</span>
+                        <span class="label">Blocks Mined</span>
                         <span class="value" id="mining-blocks">-</span>
                     </div>
                 </div>
@@ -395,14 +406,14 @@
 
             <!-- Wallet Info -->
             <div class="card wallet-card">
-                <h2>💰 지갑 정보</h2>
+                <h2>💰 Wallet Info</h2>
                 <div class="info-grid">
                     <div class="info-item">
-                        <span class="label">주소</span>
+                        <span class="label">Address</span>
                         <span class="value hash" id="wallet-address">-</span>
                     </div>
                     <div class="info-item highlight">
-                        <span class="label">잔액</span>
+                        <span class="label">Balance</span>
                         <span class="value balance" id="wallet-balance">-</span>
                     </div>
                 </div>
@@ -410,26 +421,26 @@
 
             <!-- Blockchain Status -->
             <div class="card">
-                <h2>⛓️ 블록체인 상태</h2>
+                <h2>⛓️ Blockchain Status</h2>
                 <div class="info-grid">
                     <div class="info-item highlight">
-                        <span class="label">현재 높이</span>
+                        <span class="label">Current Height</span>
                         <span class="value" id="blockchain-height">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">메모리 블록</span>
+                        <span class="label">Memory Blocks</span>
                         <span class="value" id="blockchain-memory">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">동기화 높이</span>
+                        <span class="label">Sync Height</span>
                         <span class="value" id="blockchain-sync">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">난이도</span>
+                        <span class="label">Difficulty</span>
                         <span class="value" id="blockchain-difficulty">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">체인 팁 해시</span>
+                        <span class="label">Chain Tip Hash</span>
                         <span class="value hash" id="blockchain-tip">-</span>
                     </div>
                 </div>
@@ -437,14 +448,14 @@
 
             <!-- Mempool Status -->
             <div class="card">
-                <h2>📋 멤풀 상태</h2>
+                <h2>📋 Mempool Status</h2>
                 <div class="info-grid">
                     <div class="info-item highlight">
-                        <span class="label">대기 중인 트랜잭션</span>
+                        <span class="label">Pending Transactions</span>
                         <span class="value" id="mempool-pending">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="label">확인된 트랜잭션</span>
+                        <span class="label">Seen Transactions</span>
                         <span class="value" id="mempool-seen">-</span>
                     </div>
                 </div>
@@ -452,15 +463,15 @@
 
             <!-- Network Status -->
             <div class="card">
-                <h2>🌐 네트워크 상태</h2>
+                <h2>🌐 Network Status</h2>
                 <div class="info-grid">
                     <div class="info-item highlight">
-                        <span class="label">연결된 피어</span>
+                        <span class="label">Connected Peers</span>
                         <span class="value" id="network-peers">-</span>
                     </div>
                 </div>
                 <div class="peer-list" id="peer-list-container">
-                    <h3>📡 피어 목록</h3>
+                    <h3>📡 Peer List</h3>
                     <div id="peer-list"></div>
                 </div>
             </div>
@@ -470,10 +481,10 @@
             <div class="auto-refresh-toggle">
                 <label>
                     <input type="checkbox" id="auto-refresh" checked>
-                    <span>자동 새로고침 (5초)</span>
+                    <span>Auto Refresh (5s)</span>
                 </label>
             </div>
-            <button class="refresh-btn" onclick="fetchStatus()">🔄 수동 새로고침</button>
+            <button class="refresh-btn" onclick="fetchStatus()">🔄 Manual Refresh</button>
         </div>
     </div>
 
@@ -487,11 +498,11 @@
             const secs = seconds % 60;
             
             if (hours > 0) {
-                return `${hours}시간 ${minutes}분`;
+                return `${hours}h ${minutes}m`;
             } else if (minutes > 0) {
-                return `${minutes}분 ${secs}초`;
+                return `${minutes}m ${secs}s`;
             } else {
-                return `${secs}초`;
+                return `${secs}s`;
             }
         }
 
@@ -536,14 +547,17 @@
         function formatTimestamp(timestamp) {
             if (!timestamp) return 'N/A';
             const date = new Date(timestamp);
-            return date.toLocaleString('ko-KR');
+            return date.toLocaleString('en-US');
         }
 
         async function fetchStatus() {
             try {
-                document.getElementById('loading').style.display = 'flex';
-                document.getElementById('error').style.display = 'none';
-                document.getElementById('dashboard').style.display = 'none';
+                // Only show loading on first load
+                const dashboard = document.getElementById('dashboard');
+                if (dashboard.style.display === 'none') {
+                    document.getElementById('loading').style.display = 'flex';
+                    document.getElementById('error').style.display = 'none';
+                }
 
                 const response = await fetch('/status');
                 if (!response.ok) {
@@ -552,10 +566,23 @@
 
                 const data = await response.json();
                 
+                // Helper function to update value with animation on change
+                function updateValue(elementId, newValue, formatter = null) {
+                    const element = document.getElementById(elementId);
+                    if (!element) return;
+                    
+                    const formattedValue = formatter ? formatter(newValue) : newValue.toString();
+                    if (element.textContent !== formattedValue) {
+                        element.textContent = formattedValue;
+                        element.classList.add('changed');
+                        setTimeout(() => element.classList.remove('changed'), 600);
+                    }
+                }
+                
                 // Node info
-                document.getElementById('node-version').textContent = data.node?.version || 'N/A';
-                document.getElementById('node-uptime').textContent = formatUptime(data.node?.uptime_seconds);
-                document.getElementById('node-timestamp').textContent = formatTimestamp(data.timestamp);
+                updateValue('node-version', data.node?.version || 'N/A');
+                updateValue('node-uptime', data.node?.uptime_seconds, formatUptime);
+                updateValue('node-timestamp', data.timestamp, formatTimestamp);
 
                 // Mining status
                 const miningCard = document.getElementById('mining-card');
@@ -567,53 +594,69 @@
                 }
                 
                 const miningStatus = document.getElementById('mining-status');
-                miningStatus.textContent = isMining ? '⚡ 채굴 중' : '⏸️ 대기 중';
-                miningStatus.className = 'value ' + (isMining ? 'mining-active' : 'mining-inactive');
+                const newMiningText = isMining ? '⚡ Active' : '⏸️ Idle';
+                const newMiningClass = 'value ' + (isMining ? 'mining-active' : 'mining-inactive');
                 
-                document.getElementById('mining-hashrate').textContent = formatHashrate(data.mining?.hashrate || 0);
-                document.getElementById('mining-difficulty').textContent = data.mining?.difficulty || data.blockchain?.difficulty || 0;
-                document.getElementById('mining-blocks').textContent = data.mining?.blocks_mined || 0;
+                if (miningStatus.textContent !== newMiningText) {
+                    miningStatus.textContent = newMiningText;
+                    miningStatus.className = newMiningClass;
+                }
+                
+                updateValue('mining-hashrate', data.mining?.hashrate || 0, formatHashrate);
+                updateValue('mining-difficulty', data.mining?.difficulty || data.blockchain?.difficulty || 0);
+                updateValue('mining-blocks', data.mining?.blocks_mined || 0);
 
                 // Wallet info
-                document.getElementById('wallet-address').textContent = data.wallet?.address || 'N/A';
-                document.getElementById('wallet-balance').textContent = formatBalance(data.wallet?.balance);
+                updateValue('wallet-address', data.wallet?.address || 'N/A');
+                updateValue('wallet-balance', data.wallet?.balance, formatBalance);
 
                 // Blockchain status
-                document.getElementById('blockchain-height').textContent = data.blockchain?.height || 0;
-                document.getElementById('blockchain-memory').textContent = data.blockchain?.memory_blocks || 0;
-                document.getElementById('blockchain-sync').textContent = data.blockchain?.my_height || 0;
-                document.getElementById('blockchain-difficulty').textContent = data.blockchain?.difficulty || 1;
-                document.getElementById('blockchain-tip').textContent = formatHash(data.blockchain?.chain_tip);
+                updateValue('blockchain-height', data.blockchain?.height || 0);
+                updateValue('blockchain-memory', data.blockchain?.memory_blocks || 0);
+                updateValue('blockchain-sync', data.blockchain?.my_height || 0);
+                updateValue('blockchain-difficulty', data.blockchain?.difficulty || 1);
+                updateValue('blockchain-tip', data.blockchain?.chain_tip, formatHash);
 
                 // Mempool status
-                document.getElementById('mempool-pending').textContent = data.mempool?.pending_transactions || 0;
-                document.getElementById('mempool-seen').textContent = data.mempool?.seen_transactions || 0;
+                updateValue('mempool-pending', data.mempool?.pending_transactions || 0);
+                updateValue('mempool-seen', data.mempool?.seen_transactions || 0);
 
                 // Network status
-                const peerCount = data.network?.connected_peers || 0;
-                document.getElementById('network-peers').textContent = peerCount;
+                updateValue('network-peers', data.network?.connected_peers || 0);
 
-                // Peer list
+                // Peer list - only update if changed
                 const peerListContainer = document.getElementById('peer-list');
                 if (data.network?.peer_heights && Object.keys(data.network.peer_heights).length > 0) {
                     const peers = Object.entries(data.network.peer_heights);
-                    peerListContainer.innerHTML = peers.map(([id, height]) => `
+                    const newPeerList = peers.map(([id, height]) => `
                         <div class="peer-item">
                             <span class="peer-id">${id}</span>
-                            <span class="peer-height">블록 높이: ${height}</span>
+                            <span class="peer-height">Height: ${height}</span>
                         </div>
                     `).join('');
+                    
+                    if (peerListContainer.innerHTML !== newPeerList) {
+                        peerListContainer.innerHTML = newPeerList;
+                    }
                 } else {
-                    peerListContainer.innerHTML = '<div class="no-peers">🔍 연결된 피어가 없습니다</div>';
+                    const noPeersMsg = '<div class="no-peers">🔍 No connected peers</div>';
+                    if (peerListContainer.innerHTML !== noPeersMsg) {
+                        peerListContainer.innerHTML = noPeersMsg;
+                    }
                 }
 
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('dashboard').style.display = 'grid';
+                // Show dashboard only on first load
+                const loading = document.getElementById('loading');
+                const dashboardEl = document.getElementById('dashboard');
+                if (dashboardEl.style.display === 'none') {
+                    loading.style.display = 'none';
+                    dashboardEl.style.display = 'grid';
+                }
             } catch (error) {
                 console.error('Failed to fetch node status:', error);
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('error').style.display = 'block';
-                document.getElementById('error-message').textContent = error.message || '노드 상태를 가져올 수 없습니다';
+                document.getElementById('error-message').textContent = error.message || 'Unable to fetch node status';
             }
         }
 

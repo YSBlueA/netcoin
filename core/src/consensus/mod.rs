@@ -46,6 +46,7 @@ pub fn mine_block_with_coinbase(
     miner_addr: &str,
     reward: U256,
     cancel_flag: Arc<AtomicBool>,
+    hashrate: Option<Arc<std::sync::Mutex<f64>>>,
 ) -> Result<Block> {
     let coinbase = Transaction::coinbase(miner_addr, reward).with_hashes();
     let mut all_txs = vec![coinbase];
@@ -65,6 +66,9 @@ pub fn mine_block_with_coinbase(
 
     let target_prefix = "0".repeat(difficulty as usize);
     let mut nonce: u64 = 0;
+    let mining_start = std::time::Instant::now();
+    let mut last_hashrate_update = mining_start;
+    let mut hashes_since_update: u64 = 0;
 
     // ⛏️ CPU mining loop
     loop {
@@ -85,15 +89,49 @@ pub fn mine_block_with_coinbase(
         }
 
         nonce += 1;
+        hashes_since_update += 1;
 
         // ⏸️ 100,000 nonces, check cancellation flag and show progress
         if nonce % 100_000 == 0 {
             if cancel_flag.load(Ordering::Relaxed) {
                 return Err(anyhow!("Mining cancelled"));
             }
-            // Show mining progress every 100k hashes
+
+            // Update hashrate every second (approximately)
+            let elapsed = last_hashrate_update.elapsed();
+            if elapsed.as_secs() >= 1 {
+                let current_hashrate = hashes_since_update as f64 / elapsed.as_secs_f64();
+
+                // Update shared hashrate if provided
+                if let Some(ref hr) = hashrate {
+                    if let Ok(mut hr_lock) = hr.try_lock() {
+                        *hr_lock = current_hashrate;
+                    }
+                }
+
+                log::debug!(
+                    "⛏️  Current hashrate: {:.2} H/s (difficulty: {})",
+                    current_hashrate,
+                    difficulty
+                );
+                hashes_since_update = 0;
+                last_hashrate_update = std::time::Instant::now();
+            }
+
+            // Show mining progress every 1M hashes
             if nonce % 1_000_000 == 0 {
-                log::debug!("⛏️  Mining progress: {} hashes tried (difficulty: {})", nonce, difficulty);
+                let total_duration = mining_start.elapsed().as_secs_f64();
+                let avg_hashrate = if total_duration > 0.0 {
+                    nonce as f64 / total_duration
+                } else {
+                    0.0
+                };
+                log::debug!(
+                    "⛏️  Mining progress: {} hashes tried, avg {:.2} H/s (difficulty: {})",
+                    nonce,
+                    avg_hashrate,
+                    difficulty
+                );
             }
         }
     }

@@ -36,6 +36,7 @@ pub struct PeerManager {
     peer_heights: Shared<HashMap<PeerId, u64>>,
     peer_handshakes: Shared<HashMap<PeerId, HandshakeInfo>>,
     my_height: Arc<Mutex<u64>>,
+    my_listening_port: Arc<Mutex<u16>>,
     /// callback when a new block is received
     on_block: Arc<Mutex<Option<Arc<dyn Fn(block::Block) + Send + Sync>>>>,
     /// callback when a new transaction is received
@@ -47,13 +48,7 @@ pub struct PeerManager {
             >,
         >,
     >,
-    on_getdata: Arc<
-        Mutex<
-            Option<
-                Arc<dyn Fn(PeerId, InventoryType, Vec<Vec<u8>>) + Send + Sync>,
-            >,
-        >,
-    >,
+    on_getdata: Arc<Mutex<Option<Arc<dyn Fn(PeerId, InventoryType, Vec<Vec<u8>>) + Send + Sync>>>>,
 }
 
 impl PeerManager {
@@ -63,6 +58,7 @@ impl PeerManager {
             peer_heights: Arc::new(Mutex::new(HashMap::new())),
             peer_handshakes: Arc::new(Mutex::new(HashMap::new())),
             my_height: Arc::new(Mutex::new(0)),
+            my_listening_port: Arc::new(Mutex::new(8335)), // Default port
             on_block: Arc::new(Mutex::new(None)),
             on_tx: Arc::new(Mutex::new(None)),
             on_getheaders: Arc::new(Mutex::new(None)),
@@ -104,6 +100,14 @@ impl PeerManager {
 
     pub fn get_my_height(&self) -> u64 {
         *self.my_height.lock()
+    }
+
+    pub fn set_my_listening_port(&self, port: u16) {
+        *self.my_listening_port.lock() = port;
+    }
+
+    pub fn get_my_listening_port(&self) -> u16 {
+        *self.my_listening_port.lock()
     }
 
     /// Get handshake info for a specific peer
@@ -188,6 +192,7 @@ impl PeerManager {
         // Send handshake immediately
         if let Some(tx) = self.peers.lock().get(&peer_id_clone) {
             let my_height = self.get_my_height();
+            let my_port = self.get_my_listening_port();
             let handshake_info = HandshakeInfo {
                 protocol_version: PROTOCOL_VERSION,
                 software_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -199,6 +204,7 @@ impl PeerManager {
                 network_id: NETWORK_ID.to_string(),
                 chain_id: CHAIN_ID,
                 height: my_height,
+                listening_port: my_port,
             };
             let _ = tx.send(P2pMessage::Handshake {
                 info: handshake_info,
@@ -340,6 +346,18 @@ impl PeerManager {
                     // Could disconnect here
                 }
 
+                // Check if this is ourselves (same listening port)
+                let my_port = self.get_my_listening_port();
+                if info.listening_port == my_port {
+                    warn!(
+                        "🔁 Detected self-connection to {} (same listening port: {}), disconnecting",
+                        peer_id, my_port
+                    );
+                    // Remove from peers map to disconnect
+                    self.peers.lock().remove(&peer_id);
+                    return; // Exit handler
+                }
+
                 // Store peer info
                 self.peer_heights
                     .lock()
@@ -362,6 +380,7 @@ impl PeerManager {
                         network_id: NETWORK_ID.to_string(),
                         chain_id: CHAIN_ID,
                         height: my_height,
+                        listening_port: my_port,
                     };
                     let _ = tx.send(HandshakeAck { info: my_info });
                 }
@@ -386,6 +405,18 @@ impl PeerManager {
                     info.chain_id,
                     info.height
                 );
+
+                // Check if this is ourselves (same listening port)
+                let my_port = self.get_my_listening_port();
+                if info.listening_port == my_port {
+                    warn!(
+                        "🔁 Detected self-connection in HandshakeAck from {} (same listening port: {}), disconnecting",
+                        peer_id, my_port
+                    );
+                    // Remove from peers map to disconnect
+                    self.peers.lock().remove(&peer_id);
+                    return; // Exit handler
+                }
 
                 // Store peer info
                 self.peer_heights
@@ -514,9 +545,12 @@ impl PeerManager {
     }
 
     pub async fn send_block_to_peer(&self, peer_id: &PeerId, block: &block::Block) {
-        self.send_to_peer(peer_id, P2pMessage::Block {
-            block: block.clone(),
-        });
+        self.send_to_peer(
+            peer_id,
+            P2pMessage::Block {
+                block: block.clone(),
+            },
+        );
     }
 
     pub fn load_saved_peers(&self) -> Vec<SavedPeer> {
@@ -600,18 +634,14 @@ impl PeerManager {
     }
 
     /// Register this node with a DNS server
-    pub async fn register_with_dns(
-        &self,
-        dns_server: &str,
-        my_address: &str,
-        my_port: u16,
-    ) -> anyhow::Result<()> {
+    /// The DNS server will automatically detect the IP address from the connection
+    pub async fn register_with_dns(&self, dns_server: &str, my_port: u16) -> anyhow::Result<()> {
         let client = reqwest::Client::new();
         let my_height = self.get_my_height();
         let version = env!("CARGO_PKG_VERSION").to_string();
 
         let request = DnsRegisterRequest {
-            address: my_address.to_string(),
+            address: None, // DNS server will detect the IP from the connection
             port: my_port,
             version,
             height: my_height,
@@ -681,10 +711,10 @@ impl PeerManager {
     }
 
     /// Start periodic DNS registration (call this in a background task)
+    /// The DNS server will automatically detect the node's IP address from the connection
     pub async fn start_dns_registration_loop(
         self: Arc<Self>,
         dns_server: String,
-        my_address: String,
         my_port: u16,
         interval_secs: u64,
     ) {
@@ -693,10 +723,7 @@ impl PeerManager {
         loop {
             interval.tick().await;
 
-            if let Err(e) = self
-                .register_with_dns(&dns_server, &my_address, my_port)
-                .await
-            {
+            if let Err(e) = self.register_with_dns(&dns_server, my_port).await {
                 warn!("DNS registration failed: {:?}", e);
             }
         }
@@ -705,7 +732,8 @@ impl PeerManager {
 
 #[derive(Serialize)]
 struct DnsRegisterRequest {
-    address: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    address: Option<String>,
     port: u16,
     version: String,
     height: u64,

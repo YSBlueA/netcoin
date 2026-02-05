@@ -14,7 +14,9 @@ pub struct NodeState {
     pub bc: Blockchain,
     pub blockchain: Vec<Block>,
     pub pending: Vec<Transaction>,
-    pub seen_tx: HashSet<String>,
+    /// Seen transactions with timestamp (to prevent relay loops and track when seen)
+    /// Key: txid, Value: timestamp when first seen
+    pub seen_tx: HashMap<String, i64>,
     pub p2p: Arc<PeerManager>,
     /// Maps Ethereum transaction hash to NetCoin UTXO txid (for MetaMask compatibility)
     pub eth_to_netcoin_tx: HashMap<String, String>,
@@ -31,6 +33,11 @@ pub struct NodeState {
     pub node_start_time: std::time::Instant,
     /// Miner wallet address for this node
     pub miner_address: Arc<Mutex<String>>,
+    /// Recently mined block hashes (to ignore when received from peers)
+    /// Key: block hash, Value: timestamp when mined
+    pub recently_mined_blocks: HashMap<String, i64>,
+    /// My public IP address as registered with DNS server
+    pub my_public_address: Arc<Mutex<Option<String>>>,
 }
 
 pub type NodeHandle = Arc<Mutex<NodeState>>;

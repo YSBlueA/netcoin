@@ -140,6 +140,15 @@ impl P2PService {
             tokio::spawn(async move {
                 let mut state = nh_async.lock().unwrap();
 
+                // Check if this is a block we recently mined ourselves
+                if state.recently_mined_blocks.contains_key(&block.hash) {
+                    info!(
+                        "🔁 Ignoring block we mined ourselves: index={} hash={}",
+                        block.header.index, block.hash
+                    );
+                    return;
+                }
+
                 // Cancel ongoing mining when receiving a new block
                 state
                     .mining_cancel_flag
@@ -220,30 +229,94 @@ impl P2PService {
 
         // transaction handler
         let nh3 = node_handle.clone();
+        let p2p_for_tx = p2p.clone();
         p2p.set_on_tx(move |tx: netcoin_core::transaction::Transaction| {
             let nh_async = nh3.clone();
+            let p2p_tx_relay = p2p_for_tx.clone();
             tokio::spawn(async move {
-                let mut state = nh_async.lock().unwrap();
+                // Check and update state in a separate scope to ensure lock is released
+                let should_relay = {
+                    let mut state = nh_async.lock().unwrap();
 
-                // Check if transaction already exists in pending pool
-                if state.pending.iter().any(|t| t.txid == tx.txid) {
-                    info!("Transaction {} already in mempool, skipping", tx.txid);
-                    return;
-                }
+                    // Check if we've already seen this transaction (prevents loops)
+                    if state.seen_tx.contains_key(&tx.txid) {
+                        info!("🔁 Transaction {} already seen, skipping", tx.txid);
+                        return;
+                    }
 
-                // Validate transaction signatures
-                match tx.verify_signatures() {
-                    Ok(true) => {
-                        info!("✅ Transaction {} received and validated from p2p", tx.txid);
-                        state.pending.push(tx);
-                        info!("📝 Mempool size: {} transactions", state.pending.len());
+                    // Check if transaction already exists in pending pool
+                    if state.pending.iter().any(|t| t.txid == tx.txid) {
+                        info!("Transaction {} already in mempool, skipping", tx.txid);
+                        // Mark as seen even if already in mempool
+                        let now = chrono::Utc::now().timestamp();
+                        state.seen_tx.insert(tx.txid.clone(), now);
+                        return;
                     }
-                    Ok(false) => {
-                        warn!("❌ Transaction {} has invalid signatures", tx.txid);
+
+                    // Validate transaction signatures
+                    match tx.verify_signatures() {
+                        Ok(true) => {
+                            info!("✅ Transaction {} received and validated from p2p", tx.txid);
+                            
+                            // 🔒 Security: Check for double-spending in mempool
+                            let mut tx_utxos = std::collections::HashSet::new();
+                            for inp in &tx.inputs {
+                                tx_utxos.insert(format!("{}:{}", inp.txid, inp.vout));
+                            }
+                            
+                            // Check for conflicts with pending transactions
+                            let mut has_conflict = false;
+                            for pending_tx in &state.pending {
+                                for pending_inp in &pending_tx.inputs {
+                                    let pending_utxo = format!("{}:{}", pending_inp.txid, pending_inp.vout);
+                                    if tx_utxos.contains(&pending_utxo) {
+                                        warn!(
+                                            "🚫 Double-spend detected in P2P TX {}: UTXO {} already used by pending TX {}",
+                                            tx.txid, pending_utxo, pending_tx.txid
+                                        );
+                                        has_conflict = true;
+                                        break;
+                                    }
+                                }
+                                if has_conflict {
+                                    break;
+                                }
+                            }
+                            
+                            if has_conflict {
+                                false // Reject this transaction
+                            } else {
+                                // Mark transaction as seen with timestamp
+                                let now = chrono::Utc::now().timestamp();
+                                state.seen_tx.insert(tx.txid.clone(), now);
+                                
+                                // Clean up old seen_tx entries (older than 1 hour)
+                                state.seen_tx.retain(|_, &mut timestamp| {
+                                    now - timestamp < 3600
+                                });
+                                
+                                // Add to mempool
+                                state.pending.push(tx.clone());
+                                info!("📝 Mempool size: {} transactions", state.pending.len());
+                                
+                                true // Should relay to other peers
+                            }
+                        }
+                        Ok(false) => {
+                            warn!("❌ Transaction {} has invalid signatures", tx.txid);
+                            false
+                        }
+                        Err(e) => {
+                            warn!("❌ Transaction {} validation error: {:?}", tx.txid, e);
+                            false
+                        }
                     }
-                    Err(e) => {
-                        warn!("❌ Transaction {} validation error: {:?}", tx.txid, e);
-                    }
+                }; // Lock is released here
+                
+                // Relay transaction to other peers if validated
+                if should_relay {
+                    p2p_tx_relay.broadcast_tx(&tx).await;
+                    info!("📡 Relayed transaction {} to other peers", tx.txid);
                 }
             });
         });
