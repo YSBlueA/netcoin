@@ -1,19 +1,19 @@
 <template>
   <div class="transactions-page">
-    <h1>트랜잭션 목록</h1>
+    <h1>Transaction List</h1>
 
     <div v-if="transactions.length" class="transactions-table">
       <table>
         <thead>
           <tr>
-            <th>타입</th>
-            <th>해시</th>
-            <th>보낸 주소</th>
-            <th>받는 주소</th>
-            <th>금액</th>
-            <th>수수료</th>
-            <th>상태</th>
-            <th>시간</th>
+            <th>Type</th>
+            <th>Hash</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Amount</th>
+            <th>Fee</th>
+            <th>Status</th>
+            <th>Time</th>
           </tr>
         </thead>
         <tbody>
@@ -24,8 +24,8 @@
             class="table-row"
           >
             <td class="tx-type">
-              <span v-if="tx.from === 'Block_Reward'" class="tx-badge coinbase" title="채굴 보상">⛏️</span>
-              <span v-else class="tx-badge transfer" title="일반 전송">💸</span>
+              <span v-if="tx.from === 'Block_Reward'" class="tx-badge coinbase" title="Mining Reward">⛏️</span>
+              <span v-else class="tx-badge transfer" title="Transfer">💸</span>
             </td>
             <td class="hash">{{ truncateHash(tx.hash) }}</td>
             <td class="address">{{ truncateAddress(tx.from) }}</td>
@@ -39,7 +39,7 @@
       </table>
     </div>
 
-    <div v-else class="loading">로딩 중...</div>
+    <div v-else class="loading">Loading...</div>
 
     <div class="pagination">
       <button
@@ -47,7 +47,7 @@
         :disabled="currentPage === 1"
         class="nav-btn"
       >
-        이전
+        Previous
       </button>
       <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
       <button
@@ -55,7 +55,7 @@
         :disabled="currentPage >= totalPages"
         class="nav-btn"
       >
-        다음
+        Next
       </button>
     </div>
   </div>
@@ -92,7 +92,7 @@ export default {
         this.transactions = res.data.transactions;
         this.total = res.data.total;
       } catch (error) {
-        console.error("트랜잭션 로딩 실패:", error);
+        console.error("Failed to load transactions:", error);
       }
     },
     previousPage() {

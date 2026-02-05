@@ -1,120 +1,120 @@
 <template>
   <div class="node-status">
-    <h1>🖥️ 노드 대시보드</h1>
+    <h1>🖥️ Node Dashboard</h1>
 
     <div v-if="loading" class="loading">
       <div class="spinner"></div>
-      <p>노드 상태를 불러오는 중...</p>
+      <p>Loading node status...</p>
     </div>
 
     <div v-else-if="error" class="error-message">
-      <h3>❌ 노드에 연결할 수 없습니다</h3>
+      <h3>❌ Cannot connect to node</h3>
       <p>{{ error }}</p>
-      <button @click="fetchStatus" class="retry-btn">다시 시도</button>
+      <button @click="fetchStatus" class="retry-btn">Retry</button>
     </div>
 
     <div v-else class="status-container">
-      <!-- 노드 기본 정보 -->
+      <!-- Node Information -->
       <div class="status-card">
-        <h2>⚙️ 노드 정보</h2>
+        <h2>⚙️ Node Information</h2>
         <div class="info-grid">
           <div class="info-item">
-            <span class="label">버전:</span>
+            <span class="label">Version:</span>
             <span class="value">{{ status.node?.version || "N/A" }}</span>
           </div>
           <div class="info-item">
-            <span class="label">상태:</span>
-            <span class="value status-online">🟢 온라인</span>
+            <span class="label">Status:</span>
+            <span class="value status-online">🟢 Online</span>
           </div>
           <div class="info-item">
-            <span class="label">실행 시간:</span>
+            <span class="label">Uptime:</span>
             <span class="value">{{
               formatUptime(status.node?.uptime_seconds)
             }}</span>
           </div>
           <div class="info-item">
-            <span class="label">마지막 업데이트:</span>
+            <span class="label">Last Update:</span>
             <span class="value">{{ formatTimestamp(status.timestamp) }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 채굴 상태 -->
+      <!-- Mining Status -->
       <div
         class="status-card mining-card"
         :class="{ active: status.mining?.active }"
       >
-        <h2>⛏️ 채굴 상태</h2>
+        <h2>⛏️ Mining Status</h2>
         <div class="info-grid">
           <div class="info-item highlight">
-            <span class="label">상태:</span>
+            <span class="label">Status:</span>
             <span
               class="value"
               :class="
                 status.mining?.active ? 'mining-active' : 'mining-inactive'
               "
             >
-              {{ status.mining?.active ? "⚡ 채굴 중" : "⏸️ 대기 중" }}
+              {{ status.mining?.active ? "⚡ Mining" : "⏸️ Idle" }}
             </span>
           </div>
           <div class="info-item">
-            <span class="label">해시레이트:</span>
+            <span class="label">Hashrate:</span>
             <span class="value">{{
               formatHashrate(status.mining?.hashrate)
             }}</span>
           </div>
           <div class="info-item">
-            <span class="label">현재 난이도:</span>
+            <span class="label">Current Difficulty:</span>
             <span class="value">{{
               status.mining?.difficulty || status.blockchain?.difficulty || 0
             }}</span>
           </div>
           <div class="info-item">
-            <span class="label">채굴된 블록:</span>
+            <span class="label">Blocks Mined:</span>
             <span class="value">{{ status.mining?.blocks_mined || 0 }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 지갑 정보 -->
+      <!-- Wallet Information -->
       <div class="status-card wallet-card">
-        <h2>💰 지갑 정보</h2>
+        <h2>💰 Wallet Information</h2>
         <div class="info-grid">
           <div class="info-item full-width">
-            <span class="label">주소:</span>
+            <span class="label">Address:</span>
             <span class="value hash">{{ status.wallet?.address || 'N/A' }}</span>
           </div>
           <div class="info-item highlight">
-            <span class="label">잔액:</span>
+            <span class="label">Balance:</span>
             <span class="value balance">{{ formatBalance(status.wallet?.balance) }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 블록체인 정보 -->
+      <!-- Blockchain Information -->
       <div class="status-card">
-        <h2>⛓️ 블록체인 상태</h2>
+        <h2>⛓️ Blockchain Status</h2>
         <div class="info-grid">
           <div class="info-item highlight">
-            <span class="label">현재 높이:</span>
+            <span class="label">Current Height:</span>
             <span class="value">{{ status.blockchain?.height || 0 }}</span>
           </div>
           <div class="info-item">
-            <span class="label">메모리 블록:</span>
+            <span class="label">Memory Blocks:</span>
             <span class="value">{{
               status.blockchain?.memory_blocks || 0
             }}</span>
           </div>
           <div class="info-item">
-            <span class="label">동기화 높이:</span>
+            <span class="label">Sync Height:</span>
             <span class="value">{{ status.blockchain?.my_height || 0 }}</span>
           </div>
           <div class="info-item">
-            <span class="label">난이도:</span>
+            <span class="label">Difficulty:</span>
             <span class="value">{{ status.blockchain?.difficulty || 1 }}</span>
           </div>
           <div class="info-item full-width">
-            <span class="label">체인 팁 해시:</span>
+            <span class="label">Chain Tip Hash:</span>
             <span class="value hash">{{
               formatHash(status.blockchain?.chain_tip)
             }}</span>
@@ -122,18 +122,18 @@
         </div>
       </div>
 
-      <!-- 멤풀 정보 -->
+      <!-- Mempool Information -->
       <div class="status-card">
-        <h2>📋 멤풀 상태</h2>
+        <h2>📋 Mempool Status</h2>
         <div class="info-grid">
           <div class="info-item highlight">
-            <span class="label">대기 중인 트랜잭션:</span>
+            <span class="label">Pending Transactions:</span>
             <span class="value">{{
               status.mempool?.pending_transactions || 0
             }}</span>
           </div>
           <div class="info-item">
-            <span class="label">확인된 트랜잭션:</span>
+            <span class="label">Seen Transactions:</span>
             <span class="value">{{
               status.mempool?.seen_transactions || 0
             }}</span>
@@ -141,32 +141,32 @@
         </div>
       </div>
 
-      <!-- 네트워크 정보 -->
+      <!-- Network Information -->
       <div class="status-card">
-        <h2>🌐 네트워크 상태</h2>
+        <h2>🌐 Network Status</h2>
         <div class="info-grid">
           <div class="info-item highlight">
-            <span class="label">연결된 피어:</span>
+            <span class="label">Connected Peers:</span>
             <span class="value">{{
               status.network?.connected_peers || 0
             }}</span>
           </div>
         </div>
 
-        <!-- 피어 목록 -->
+        <!-- Peer List -->
         <div v-if="peerHeights.length > 0" class="peer-list">
-          <h3>📡 피어 목록</h3>
+          <h3>📡 Peer List</h3>
           <div class="peer-item" v-for="peer in peerHeights" :key="peer.id">
             <span class="peer-id">{{ peer.id }}</span>
-            <span class="peer-height">블록 높이: {{ peer.height }}</span>
+            <span class="peer-height">Block Height: {{ peer.height }}</span>
           </div>
         </div>
         <div v-else class="no-peers">
-          <p>🔍 연결된 피어가 없습니다</p>
+          <p>🔍 No connected peers</p>
         </div>
       </div>
 
-      <!-- 자동 새로고침 설정 -->
+      <!-- Auto Refresh Settings -->
       <div class="auto-refresh-control">
         <label>
           <input
@@ -174,10 +174,10 @@
             v-model="autoRefresh"
             @change="toggleAutoRefresh"
           />
-          <span>자동 새로고침 ({{ refreshInterval / 1000 }}초마다)</span>
+          <span>Auto Refresh (every {{ refreshInterval / 1000 }} seconds)</span>
         </label>
         <button @click="fetchStatus" class="refresh-btn">
-          🔄 수동 새로고침
+          🔄 Manual Refresh
         </button>
       </div>
     </div>
@@ -213,7 +213,7 @@ export default {
       } catch (err) {
         console.error("Failed to fetch node status:", err);
         error.value =
-          err.response?.data?.message || "노드 상태를 가져올 수 없습니다";
+          err.response?.data?.message || "Unable to fetch node status";
       } finally {
         loading.value = false;
       }
@@ -260,11 +260,11 @@ export default {
       const secs = seconds % 60;
 
       if (hours > 0) {
-        return `${hours}시간 ${minutes}분`;
+        return `${hours}h ${minutes}m`;
       } else if (minutes > 0) {
-        return `${minutes}분 ${secs}초`;
+        return `${minutes}m ${secs}s`;
       } else {
-        return `${secs}초`;
+        return `${secs}s`;
       }
     };
 

@@ -1,40 +1,40 @@
 <template>
   <div class="transaction-detail-page">
     <div v-if="loading" class="loading">
-      <p>트랜잭션 조회 중...</p>
+      <p>Loading transaction...</p>
       <p v-if="isEthHash" class="info-text">
-        Ethereum 트랜잭션 해시를 NetCoin 트랜잭션으로 변환 중입니다...
+        Converting Ethereum transaction hash to NetCoin transaction...
       </p>
     </div>
     <div v-else-if="error" class="error-container">
-      <h2>❌ 트랜잭션을 찾을 수 없습니다</h2>
+      <h2>❌ Transaction not found</h2>
       <p class="error-message">{{ error }}</p>
       <p class="hash-display">
-        검색한 해시: <code>{{ searchHash }}</code>
+        Searched hash: <code>{{ searchHash }}</code>
       </p>
       <div class="actions">
         <button @click="goToTransactions" class="btn btn-primary">
-          모든 트랜잭션 보기
+          View All Transactions
         </button>
       </div>
     </div>
     <div v-else-if="transaction" class="detail-container">
-      <h1>트랜잭션 상세</h1>
+      <h1>Transaction Details</h1>
 
       <div v-if="isCoinbase" class="info-banner coinbase-banner">
-        ⛏️ 채굴 보상 트랜잭션
+        ⛏️ Mining Reward Transaction
       </div>
       <div v-else-if="isEthHash" class="info-banner">
-        ℹ️ 이 트랜잭션은 MetaMask를 통해 전송되었습니다
+        ℹ️ This transaction was sent through MetaMask
       </div>
 
       <div class="detail-grid">
         <div class="detail-item">
-          <span class="label">해시</span>
+          <span class="label">Hash</span>
           <span class="value monospace">{{ transaction.hash }}</span>
         </div>
         <div class="detail-item" v-if="!isCoinbase">
-          <span class="label">보낸 주소</span>
+          <span class="label">From Address</span>
           <span
             class="value address-link"
             @click="goToAddress(transaction.from)"
@@ -43,11 +43,11 @@
           </span>
         </div>
         <div class="detail-item" v-else>
-          <span class="label">보낸 주소</span>
+          <span class="label">From Address</span>
           <span class="value coinbase-from">{{ transaction.from }}</span>
         </div>
         <div class="detail-item">
-          <span class="label">받는 주소</span>
+          <span class="label">To Address</span>
           <span 
             class="value"
             :class="{ 'address-link': !transaction.to.includes('recipients') && !transaction.to.includes('outputs') }"
@@ -57,49 +57,49 @@
           </span>
         </div>
         <div class="detail-item">
-          <span class="label">{{ isCoinbase ? '보상 금액' : '전송 금액' }}</span>
+          <span class="label">{{ isCoinbase ? 'Reward Amount' : 'Transfer Amount' }}</span>
           <span class="value amount"
             >{{ formatAmount(transaction.amount) }} NTC</span
           >
         </div>
         <div class="detail-item" v-if="!isCoinbase">
-          <span class="label">수수료</span>
+          <span class="label">Fee</span>
           <span class="value fee">
             {{ formatAmount(transaction.fee) }} NTC
             <span class="natoshi-info">({{ formatNatoshi(transaction.fee) }} natoshi)</span>
           </span>
         </div>
         <div class="detail-item" v-if="!isCoinbase">
-          <span class="label">총 지불액</span>
+          <span class="label">Total Amount</span>
           <span class="value total"
             >{{ formatTotal(transaction.amount, transaction.fee) }} NTC</span
           >
         </div>
         <div class="detail-item">
-          <span class="label">상태</span>
+          <span class="label">Status</span>
           <span class="value status" :class="transaction.status">
             {{ transaction.status }}
           </span>
         </div>
         <div class="detail-item">
-          <span class="label">블록 높이</span>
+          <span class="label">Block Height</span>
           <span class="value">
             {{
               transaction.block_height
                 ? "#" + transaction.block_height
-                : "대기 중"
+                : "Pending"
             }}
           </span>
         </div>
         <div class="detail-item">
-          <span class="label">생성 시간</span>
+          <span class="label">Timestamp</span>
           <span class="value">{{ formatTime(transaction.timestamp) }}</span>
         </div>
       </div>
 
       <div class="actions">
         <button @click="goToTransactions" class="btn btn-primary">
-          모든 트랜잭션 보기
+          View All Transactions
         </button>
       </div>
     </div>
@@ -143,9 +143,9 @@ export default {
         this.transaction = res.data;
         console.log("Transaction loaded:", this.transaction);
       } catch (error) {
-        console.error("트랜잭션 로딩 실패:", error);
+        console.error("Failed to load transaction:", error);
         this.error =
-          error.response?.data?.error || "트랜잭션을 찾을 수 없습니다.";
+          error.response?.data?.error || "Transaction not found.";
       } finally {
         this.loading = false;
       }

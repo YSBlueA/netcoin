@@ -1,31 +1,31 @@
 <template>
   <div class="block-detail-page">
     <div v-if="block" class="detail-container">
-      <h1>블록 #{{ block.height }}</h1>
+      <h1>Block #{{ block.height }}</h1>
 
       <div class="detail-grid">
         <div class="detail-item">
-          <span class="label">해시</span>
+          <span class="label">Hash</span>
           <span class="value monospace">{{ block.hash }}</span>
         </div>
         <div class="detail-item">
-          <span class="label">이전 해시</span>
+          <span class="label">Previous Hash</span>
           <span class="value monospace">{{ block.previous_hash }}</span>
         </div>
         <div class="detail-item">
-          <span class="label">채굴자</span>
+          <span class="label">Miner</span>
           <span class="value">{{ block.miner }}</span>
         </div>
         <div class="detail-item">
-          <span class="label">생성 시간</span>
+          <span class="label">Timestamp</span>
           <span class="value">{{ formatTime(block.timestamp) }}</span>
         </div>
         <div class="detail-item">
-          <span class="label">트랜잭션 수</span>
+          <span class="label">Transactions</span>
           <span class="value">{{ block.transactions }}</span>
         </div>
         <div class="detail-item">
-          <span class="label">난이도</span>
+          <span class="label">Difficulty</span>
           <span class="value">{{ block.difficulty }}</span>
         </div>
         <div class="detail-item">
@@ -36,11 +36,11 @@
 
       <div class="actions">
         <button @click="goToBlocks" class="btn btn-primary">
-          모든 블록 보기
+          View All Blocks
         </button>
       </div>
     </div>
-    <div v-else class="loading">로딩 중...</div>
+    <div v-else class="loading">Loading...</div>
   </div>
 </template>
 
@@ -64,7 +64,7 @@ export default {
         const res = await explorerAPI.getBlockByHeight(height);
         this.block = res.data;
       } catch (error) {
-        console.error("블록 로딩 실패:", error);
+        console.error("Failed to load block:", error);
       }
     },
     formatTime(timestamp) {

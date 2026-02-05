@@ -1,7 +1,7 @@
 <template>
   <div class="address-page">
     <div v-if="addressInfo" class="detail-container">
-      <h1>주소 정보</h1>
+      <h1>Address Information</h1>
 
       <div class="address-header">
         <div class="address-hash monospace">{{ addressInfo.address }}</div>
@@ -9,44 +9,44 @@
 
       <div class="detail-grid">
         <div class="detail-item highlight">
-          <span class="label">잔액</span>
+          <span class="label">Balance</span>
           <span class="value balance"
             >{{ formatAmount(addressInfo.balance) }} NTC</span
           >
         </div>
         <div class="detail-item">
-          <span class="label">받은 금액</span>
+          <span class="label">Total Received</span>
           <span class="value received"
             >{{ formatAmount(addressInfo.received) }} NTC</span
           >
         </div>
         <div class="detail-item">
-          <span class="label">보낸 금액</span>
+          <span class="label">Total Sent</span>
           <span class="value sent"
             >{{ formatAmount(addressInfo.sent) }} NTC</span
           >
         </div>
         <div class="detail-item">
-          <span class="label">트랜잭션 수</span>
+          <span class="label">Transactions</span>
           <span class="value">{{ addressInfo.transaction_count }}</span>
         </div>
         <div class="detail-item">
-          <span class="label">마지막 활동</span>
+          <span class="label">Last Activity</span>
           <span class="value">
             {{
               addressInfo.last_transaction
                 ? formatTime(addressInfo.last_transaction)
-                : "활동 없음"
+                : "No Activity"
             }}
           </span>
         </div>
       </div>
 
       <div class="actions">
-        <button @click="goHome" class="btn btn-primary">홈으로</button>
+        <button @click="goHome" class="btn btn-primary">Home</button>
       </div>
     </div>
-    <div v-else class="loading">로딩 중...</div>
+    <div v-else class="loading">Loading...</div>
   </div>
 </template>
 
@@ -72,7 +72,7 @@ export default {
         console.log("Address Info:", res.data);
         console.log("Balance:", res.data.balance, typeof res.data.balance);
       } catch (error) {
-        console.error("주소 정보 로딩 실패:", error);
+        console.error("Failed to load address info:", error);
       }
     },
     formatTime(timestamp) {

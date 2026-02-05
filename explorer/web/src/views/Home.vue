@@ -2,30 +2,30 @@
   <div class="home-page">
     <div class="hero">
       <h1>⛏️ NetCoin Blockchain Explorer</h1>
-      <p>실시간 블록체인 상태 모니터링</p>
+      <p>Real-time blockchain monitoring</p>
     </div>
 
     <div class="search-box">
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="블록 높이, 트랜잭션 해시, 주소 검색..."
+        placeholder="Search by block height, transaction hash, or address..."
         @keyup.enter="handleSearch"
       />
-      <button @click="handleSearch">검색</button>
+      <button @click="handleSearch">Search</button>
     </div>
 
     <div v-if="stats" class="stats-grid">
       <div class="stat-card">
-        <div class="stat-label">총 블록</div>
+        <div class="stat-label">Total Blocks</div>
         <div class="stat-value">{{ stats.total_blocks }}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">총 트랜잭션</div>
+        <div class="stat-label">Total Transactions</div>
         <div class="stat-value">{{ stats.total_transactions }}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">총 거래량</div>
+        <div class="stat-label">Total Volume</div>
         <div class="stat-value">
           {{ formatVolumeAmount(stats.total_volume) }}
         </div>
@@ -34,7 +34,7 @@
 
     <div class="recent-section">
       <div class="section">
-        <h2>최근 블록</h2>
+        <h2>Recent Blocks</h2>
         <div v-if="recentBlocks.length" class="blocks-list">
           <div
             v-for="block in recentBlocks.slice(0, 5)"
@@ -52,11 +52,11 @@
             </div>
           </div>
         </div>
-        <div v-else class="loading">데이터 로딩 중...</div>
+        <div v-else class="loading">Loading data...</div>
       </div>
 
       <div class="section">
-        <h2>최근 트랜잭션</h2>
+        <h2>Recent Transactions</h2>
         <div v-if="recentTransactions.length" class="transactions-list">
           <div
             v-for="tx in recentTransactions.slice(0, 5)"
@@ -66,8 +66,8 @@
           >
             <div class="item-header">
               <span class="tx-hash">
-                <span v-if="tx.from === 'Block_Reward'" class="tx-type-badge coinbase">⛏️ 채굴</span>
-                <span v-else class="tx-type-badge transfer">💸 전송</span>
+                <span v-if="tx.from === 'Block_Reward'" class="tx-type-badge coinbase">⛏️ Mining</span>
+                <span v-else class="tx-type-badge transfer">💸 Transfer</span>
                 {{ truncateHash(tx.hash) }}
               </span>
               <span class="timestamp">{{ formatTime(tx.timestamp) }}</span>
@@ -78,7 +78,7 @@
             </div>
           </div>
         </div>
-        <div v-else class="loading">데이터 로딩 중...</div>
+        <div v-else class="loading">Loading data...</div>
       </div>
     </div>
   </div>

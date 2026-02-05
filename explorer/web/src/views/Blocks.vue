@@ -1,17 +1,17 @@
 <template>
   <div class="blocks-page">
-    <h1>블록 목록</h1>
+    <h1>Block List</h1>
 
     <div v-if="blocks.length" class="blocks-table">
       <table>
         <thead>
           <tr>
-            <th>높이</th>
-            <th>해시</th>
-            <th>채굴자</th>
-            <th>트랜잭션</th>
-            <th>생성 시간</th>
-            <th>난이도</th>
+            <th>Height</th>
+            <th>Hash</th>
+            <th>Miner</th>
+            <th>Transactions</th>
+            <th>Timestamp</th>
+            <th>Difficulty</th>
           </tr>
         </thead>
         <tbody>
@@ -32,7 +32,7 @@
       </table>
     </div>
 
-    <div v-else class="loading">로딩 중...</div>
+    <div v-else class="loading">Loading...</div>
 
     <div class="pagination">
       <button
@@ -40,7 +40,7 @@
         :disabled="currentPage === 1"
         class="nav-btn"
       >
-        이전
+        Previous
       </button>
       <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
       <button
@@ -48,7 +48,7 @@
         :disabled="currentPage >= totalPages"
         class="nav-btn"
       >
-        다음
+        Next
       </button>
     </div>
   </div>
@@ -75,11 +75,11 @@ export default {
   },
   mounted() {
     this.fetchBlocks();
-    // 5초마다 자동 새로고침 (최신 블록 동기화)
+    // Auto refresh every 5 seconds (sync latest blocks)
     this.refreshInterval = setInterval(() => this.fetchBlocks(), 5000);
   },
   beforeUnmount() {
-    // 컴포넌트 언마운트 시 인터벌 제거
+    // Clear interval when component unmounts
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
@@ -91,7 +91,7 @@ export default {
         this.blocks = res.data.blocks;
         this.total = res.data.total;
       } catch (error) {
-        console.error("블록 로딩 실패:", error);
+        console.error("Failed to load blocks:", error);
       }
     },
     previousPage() {
