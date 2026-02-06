@@ -1,6 +1,6 @@
 use crate::wallet::Wallet;
-use netcoin_config::config::Config;
-use netcoin_core::transaction::{BINCODE_CONFIG, Transaction, TransactionInput, TransactionOutput};
+use Astram_config::config::Config;
+use Astram_core::transaction::{BINCODE_CONFIG, Transaction, TransactionInput, TransactionOutput};
 use primitive_types::U256;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
@@ -8,20 +8,20 @@ use serde_json::Value;
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
-// NTC unit constants (18 decimal places, same as Ethereum)
-const NATOSHI_PER_NTC: u128 = 1_000_000_000_000_000_000; // 1 NTC = 10^18 natoshi
+// ASRM unit constants (18 decimal places, same as Ethereum)
+const NATOSHI_PER_ASRM: u128 = 1_000_000_000_000_000_000; // 1 ASRM = 10^18 natoshi
 
-/// Convert NTC to natoshi (smallest unit) as U256
-pub fn ntc_to_natoshi(ntc: f64) -> U256 {
-    let natoshi = (ntc * NATOSHI_PER_NTC as f64) as u128;
+/// Convert ASRM to natoshi (smallest unit) as U256
+pub fn ASRM_to_natoshi(ASRM: f64) -> U256 {
+    let natoshi = (ASRM * NATOSHI_PER_ASRM as f64) as u128;
     U256::from(natoshi)
 }
 
-/// Convert natoshi (U256) to NTC for display
-pub fn natoshi_to_ntc(natoshi: U256) -> f64 {
+/// Convert natoshi (U256) to ASRM for display
+pub fn natoshi_to_ASRM(natoshi: U256) -> f64 {
     // Convert U256 to u128 (safe for reasonable amounts)
     let natoshi_u128 = natoshi.low_u128();
-    natoshi_u128 as f64 / NATOSHI_PER_NTC as f64
+    natoshi_u128 as f64 / NATOSHI_PER_ASRM as f64
 }
 
 #[derive(clap::Subcommand)]
@@ -36,10 +36,10 @@ pub enum Commands {
     Balance { address: String },
 
     /// Create, sign, and broadcast a transaction to the network
-    /// Amount should be specified in NTC (e.g., 1.5 for 1.5 NTC)
+    /// Amount should be specified in ASRM (e.g., 1.5 for 1.5 ASRM)
     Send {
         to: String,
-        #[arg(help = "Amount in NTC (e.g., 1.5)")]
+        #[arg(help = "Amount in ASRM (e.g., 1.5)")]
         amount: f64,
     },
 
@@ -84,13 +84,13 @@ fn save_wallet_json(wallet: &Wallet, path: &str) -> std::io::Result<()> {
 
 pub fn generate_wallet() {
     let wallet = Wallet::new();
-    println!("✅ New wallet created successfully!");
-    println!("📍 Address: {}", wallet.address);
-    println!("🔑 Private Key: {}", wallet.secret_hex());
-    println!("📋 Public Key: {}", wallet.public_hex());
-    println!("✨ Checksum Address: {}", wallet.checksummed_address());
+    println!("[OK] New wallet created successfully!");
+    println!("Address: {}", wallet.address);
+    println!("Private Key: {}", wallet.secret_hex());
+    println!("Public Key: {}", wallet.public_hex());
+    println!("Checksum Address: {}", wallet.checksummed_address());
     println!();
-    println!("⚠️  IMPORTANT: Save your private key securely!");
+    println!("[WARN] IMPORTANT: Save your private key securely!");
     println!("   You can import this into MetaMask using the private key.");
 
     let path = get_wallet_path();
@@ -101,11 +101,11 @@ pub fn generate_eth_wallet() {
     // Same as generate_wallet now, since all wallets are Ethereum-compatible
     generate_wallet();
     println!();
-    println!("📖 To add NetCoin to MetaMask:");
-    println!("   Network Name: NetCoin Localhost");
+    println!("To add Astram to MetaMask:");
+    println!("   Network Name: Astram Localhost");
     println!("   RPC URL: http://127.0.0.1:8545");
     println!("   Chain ID: 8888");
-    println!("   Currency Symbol: NTC");
+    println!("   Currency Symbol: ASRM");
 }
 
 fn load_wallet() -> Wallet {
@@ -113,8 +113,8 @@ fn load_wallet() -> Wallet {
     let data = fs::read_to_string(&path).expect("Failed to read wallet file");
     let wallet_json: WalletJson = serde_json::from_str(&data).expect("Failed to parse wallet JSON");
 
-    println!("✅ Wallet loaded: {}", wallet_json.address);
-    println!("🔑 Private key: {}", wallet_json.secret_key);
+    println!("[INFO] Wallet loaded: {}", wallet_json.address);
+    println!("Private key: {}", wallet_json.secret_key);
 
     Wallet::from_hex(&wallet_json.secret_key)
 }
@@ -138,10 +138,10 @@ pub fn get_balance(address: &str) {
                     .map(U256::from)
                     .unwrap_or_else(U256::zero)
             };
-            let balance_ntc = natoshi_to_ntc(balance_natoshi);
-            println!("💰 Balance: {} NTC", balance_ntc);
+            let balance_ASRM = natoshi_to_ASRM(balance_natoshi);
+            println!("Balance: {} ASRM", balance_ASRM);
         }
-        Err(e) => println!("❌ Query failed: {}", e),
+        Err(e) => println!("[ERROR] Query failed: {}", e),
     }
 }
 
@@ -155,18 +155,18 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
         Ok(res) => match res.json() {
             Ok(v) => v,
             Err(e) => {
-                println!("❌ Failed to parse UTXOs JSON: {}", e);
+                println!("[ERROR] Failed to parse UTXOs JSON: {}", e);
                 return;
             }
         },
         Err(e) => {
-            println!("❌ Query failed: {}", e);
+            println!("[ERROR] Query failed: {}", e);
             return;
         }
     };
 
     if utxos.is_empty() {
-        println!("❌ No UTXOs available for address {}", wallet.address);
+        println!("[WARN] No UTXOs available for address {}", wallet.address);
         return;
     }
 
@@ -203,9 +203,9 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
 
     if input_sum < amount_natoshi {
         println!(
-            "❌ Insufficient balance: have {} NTC, need {} NTC",
-            natoshi_to_ntc(input_sum),
-            natoshi_to_ntc(amount_natoshi)
+            "[WARN] Insufficient balance: have {} ASRM, need {} ASRM",
+            natoshi_to_ASRM(input_sum),
+            natoshi_to_ASRM(amount_natoshi)
         );
         return;
     }
@@ -216,19 +216,19 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
     // - Per input: ~100 bytes (txid, vout, pubkey, signature)
     // - Per output: ~50 bytes (address, amount)
     let estimated_tx_size = 100 + (selected_inputs.len() * 100) + (2 * 50); // Assume 2 outputs max
-    let fee = netcoin_core::config::calculate_default_fee(estimated_tx_size);
+    let fee = Astram_core::config::calculate_default_fee(estimated_tx_size);
 
-    println!("📊 Transaction Details:");
+    println!("Transaction Details:");
     println!("   Inputs: {} UTXO(s)", selected_inputs.len());
     println!("   Estimated size: {} bytes", estimated_tx_size);
-    println!("   Fee: {} NTC ({} natoshi)", natoshi_to_ntc(fee), fee);
+    println!("   Fee: {} ASRM ({} natoshi)", natoshi_to_ASRM(fee), fee);
 
     // Check if we have enough for amount + fee
     if input_sum < amount_natoshi + fee {
         println!(
-            "❌ Insufficient balance for amount + fee: have {} NTC, need {} NTC",
-            natoshi_to_ntc(input_sum),
-            natoshi_to_ntc(amount_natoshi + fee)
+            "[WARN] Insufficient balance for amount + fee: have {} ASRM, need {} ASRM",
+            natoshi_to_ASRM(input_sum),
+            natoshi_to_ASRM(amount_natoshi + fee)
         );
         return;
     }
@@ -250,8 +250,8 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
         timestamp: chrono::Utc::now().timestamp(),
     };
 
-    // 5️⃣ 서명 (secp256k1)
-    use netcoin_core::crypto::WalletKeypair;
+    // Step 5: Sign transaction (secp256k1)
+    use Astram_core::crypto::WalletKeypair;
     use secp256k1::SecretKey;
 
     let secret_bytes = hex::decode(wallet.secret_hex()).expect("Invalid secret key");
@@ -265,23 +265,23 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
     };
 
     if let Err(e) = tx.sign(&keypair) {
-        println!("❌ Failed to sign transaction: {}", e);
+        println!("??Failed to sign transaction: {}", e);
         return;
     }
 
     tx.verify_signatures()
         .expect("Signature verification failed after signing");
 
-    // 6️⃣ txid와 eth_hash 채우기
+    // Step 6: Populate txid and eth_hash
     tx = tx.with_hashes();
 
-    println!("✅ Transaction created successfully!");
+    println!("[OK] Transaction created successfully!");
     println!("   TXID (internal): {}", tx.txid);
     println!("   ETH Hash (external): {}", tx.eth_hash);
-    println!("   Amount: {} NTC", natoshi_to_ntc(amount_natoshi));
-    println!("   Fee: {} NTC ({} natoshi)", natoshi_to_ntc(fee), fee);
+    println!("   Amount: {} ASRM", natoshi_to_ASRM(amount_natoshi));
+    println!("   Fee: {} ASRM ({} natoshi)", natoshi_to_ASRM(fee), fee);
     if change > U256::zero() {
-        println!("   Change: {} NTC", natoshi_to_ntc(change));
+        println!("   Change: {} ASRM", natoshi_to_ASRM(change));
     }
     println!(
         "Signature: {}",
@@ -291,16 +291,16 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
             .unwrap_or("no signature")
     );
 
-    // 7️⃣ Serialize
+    // Step 7: Serialize
     let body = match bincode::encode_to_vec(&tx, *BINCODE_CONFIG) {
         Ok(b) => b,
         Err(e) => {
-            println!("❌ Failed to serialize transaction: {}", e);
+            println!("[ERROR] Failed to serialize transaction: {}", e);
             return;
         }
     };
 
-    // 8️⃣ POST /tx
+    // Step 8: POST /tx
     match client
         .post(format!("{}/tx", cfg.node_rpc_url))
         .body(body)
@@ -312,13 +312,13 @@ pub fn send_transaction(to: &str, amount_natoshi: U256) {
             let mut text = String::new();
             response.read_to_string(&mut text).unwrap_or_default();
             if status.is_success() {
-                println!("🚀 Transaction broadcast completed!");
+                println!("[OK] Transaction broadcast completed!");
             } else {
-                println!("❌ Transaction failed!");
+                println!("[ERROR] Transaction failed!");
                 println!("Status: {}", status);
                 println!("Response body: {}", text);
             }
         }
-        Err(e) => println!("❌ Transaction failed (network/reqwest error): {}", e),
+        Err(e) => println!("[ERROR] Transaction failed (network/reqwest error): {}", e),
     }
 }

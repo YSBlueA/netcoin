@@ -1,43 +1,43 @@
-# Netcoin DNS Server
+# Astram DNS Server
 
-Netcoin 네트워크의 노드 디스커버리를 위한 DNS 서버입니다.
+Astram ?�트?�크???�드 ?�스커버리�? ?�한 DNS ?�버?�니??
 
 ## 기능
 
-- 노드 등록 및 관리
-- 노드 목록 조회
-- 자동 오래된 노드 정리
-- 노드 통계 제공
+- ?�드 ?�록 �?관�?
+- ?�드 목록 조회
+- ?�동 ?�래???�드 ?�리
+- ?�드 ?�계 ?�공
 
-## 빌드 및 실행
+## 빌드 �??�행
 
-### DNS 서버 실행
+### DNS ?�버 ?�행
 
 ```bash
 cd dns-server
 cargo run
 ```
 
-또는 포트와 최대 노드 유효 시간을 지정:
+?�는 ?�트?� 최�? ?�드 ?�효 ?�간??지??
 
 ```bash
 cargo run -- --port 8053 --max-age 3600
 ```
 
-### 옵션
+### ?�션
 
-- `--port` 또는 `-p`: DNS 서버 포트 (기본값: 8053)
-- `--max-age` 또는 `-m`: 노드의 최대 유효 시간 (초 단위, 기본값: 3600)
+- `--port` ?�는 `-p`: DNS ?�버 ?�트 (기본�? 8053)
+- `--max-age` ?�는 `-m`: ?�드??최�? ?�효 ?�간 (�??�위, 기본�? 3600)
 
-## API 엔드포인트
+## API ?�드?�인??
 
-### 1. 노드 등록
+### 1. ?�드 ?�록
 
 **POST** `/register`
 
-노드를 DNS 서버에 등록합니다.
+?�드�?DNS ?�버???�록?�니??
 
-**요청 본문:**
+**?�청 본문:**
 
 ```json
 {
@@ -48,7 +48,7 @@ cargo run -- --port 8053 --max-age 3600
 }
 ```
 
-**응답:**
+**?�답:**
 
 ```json
 {
@@ -58,18 +58,18 @@ cargo run -- --port 8053 --max-age 3600
 }
 ```
 
-### 2. 노드 목록 조회
+### 2. ?�드 목록 조회
 
 **GET** `/nodes?limit=10&min_height=1000`
 
-등록된 노드 목록을 조회합니다.
+?�록???�드 목록??조회?�니??
 
-**쿼리 파라미터:**
+**쿼리 ?�라미터:**
 
-- `limit` (선택): 반환할 최대 노드 수
-- `min_height` (선택): 최소 블록 높이
+- `limit` (?�택): 반환??최�? ?�드 ??
+- `min_height` (?�택): 최소 블록 ?�이
 
-**응답:**
+**?�답:**
 
 ```json
 {
@@ -86,13 +86,13 @@ cargo run -- --port 8053 --max-age 3600
 }
 ```
 
-### 3. 서버 상태 확인
+### 3. ?�버 ?�태 ?�인
 
 **GET** `/health`
 
-서버의 상태를 확인합니다.
+?�버???�태�??�인?�니??
 
-**응답:**
+**?�답:**
 
 ```json
 {
@@ -102,13 +102,13 @@ cargo run -- --port 8053 --max-age 3600
 }
 ```
 
-### 4. 통계 조회
+### 4. ?�계 조회
 
 **GET** `/stats`
 
-네트워크 통계를 조회합니다.
+?�트?�크 ?�계�?조회?�니??
 
-**응답:**
+**?�답:**
 
 ```json
 {
@@ -123,19 +123,19 @@ cargo run -- --port 8053 --max-age 3600
 }
 ```
 
-## P2P 노드에서 DNS 사용하기
+## P2P ?�드?�서 DNS ?�용?�기
 
-### 1. DNS 서버에 노드 등록
+### 1. DNS ?�버???�드 ?�록
 
 ```rust
 use std::sync::Arc;
 
-// PeerManager 생성 후
+// PeerManager ?�성 ??
 let peer_manager = Arc::new(PeerManager::new());
 
-// DNS 서버에 등록
-let dns_server = "http://dns.netcoin.org:8053";
-let my_address = "192.168.1.100"; // 외부에서 접근 가능한 주소
+// DNS ?�버???�록
+let dns_server = "http://dns.Astram.org:8053";
+let my_address = "192.168.1.100"; // ?��??�서 ?�근 가?�한 주소
 let my_port = 8333;
 
 peer_manager
@@ -143,36 +143,36 @@ peer_manager
     .await?;
 ```
 
-### 2. 주기적으로 DNS에 등록 (백그라운드)
+### 2. 주기?�으�?DNS???�록 (백그?�운??
 
 ```rust
-// 5분마다 DNS에 등록
+// 5분마??DNS???�록
 let peer_manager_clone = peer_manager.clone();
 tokio::spawn(async move {
     peer_manager_clone
         .start_dns_registration_loop(
-            "http://dns.netcoin.org:8053".to_string(),
+            "http://dns.Astram.org:8053".to_string(),
             "192.168.1.100".to_string(),
             8333,
-            300, // 5분마다
+            300, // 5분마??
         )
         .await;
 });
 ```
 
-### 3. DNS에서 피어 목록 가져오기
+### 3. DNS?�서 ?�어 목록 가?�오�?
 
 ```rust
-// 최대 20개의 노드를 가져옴 (최소 높이 1000 이상)
+// 최�? 20개의 ?�드�?가?�옴 (최소 ?�이 1000 ?�상)
 let peers = peer_manager
     .fetch_peers_from_dns(
-        "http://dns.netcoin.org:8053",
+        "http://dns.Astram.org:8053",
         Some(20),
         Some(1000),
     )
     .await?;
 
-// 가져온 피어들에 연결
+// 가?�온 ?�어?�에 ?�결
 for peer_addr in peers {
     let pm = peer_manager.clone();
     tokio::spawn(async move {
@@ -183,23 +183,23 @@ for peer_addr in peers {
 }
 ```
 
-## 예제: 전체 노드 실행 흐름
+## ?�제: ?�체 ?�드 ?�행 ?�름
 
 ```rust
 use std::sync::Arc;
-use netcoin_node::p2p::PeerManager;
+use Astram_node::p2p::PeerManager;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let peer_manager = Arc::new(PeerManager::new());
 
-    // 1. DNS에서 피어 목록 가져오기
-    let dns_server = "http://dns.netcoin.org:8053";
+    // 1. DNS?�서 ?�어 목록 가?�오�?
+    let dns_server = "http://dns.Astram.org:8053";
     let peers = peer_manager
         .fetch_peers_from_dns(dns_server, Some(10), None)
         .await?;
 
-    // 2. 가져온 피어들에 연결
+    // 2. 가?�온 ?�어?�에 ?�결
     for peer_addr in peers {
         let pm = peer_manager.clone();
         tokio::spawn(async move {
@@ -207,13 +207,13 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // 3. P2P 리스너 시작
+    // 3. P2P 리스???�작
     let pm = peer_manager.clone();
     tokio::spawn(async move {
         pm.start_listener("0.0.0.0:8333").await.unwrap();
     });
 
-    // 4. DNS 등록 시작 (5분마다)
+    // 4. DNS ?�록 ?�작 (5분마??
     let pm = peer_manager.clone();
     tokio::spawn(async move {
         pm.start_dns_registration_loop(
@@ -231,7 +231,7 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
-## Docker로 DNS 서버 실행
+## Docker�?DNS ?�버 ?�행
 
 ### Dockerfile
 
@@ -244,9 +244,9 @@ RUN cargo build --release
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/netcoin-dns /usr/local/bin/
+COPY --from=builder /app/target/release/Astram-dns /usr/local/bin/
 EXPOSE 8053
-CMD ["netcoin-dns", "--port", "8053"]
+CMD ["Astram-dns", "--port", "8053"]
 ```
 
 ### Docker Compose
@@ -266,33 +266,34 @@ services:
     restart: unless-stopped
 ```
 
-실행:
+?�행:
 
 ```bash
 docker-compose up -d dns-server
 ```
 
-## 보안 고려사항
+## 보안 고려?�항
 
-1. **DDoS 방지**: 프로덕션 환경에서는 rate limiting 추가 권장
-2. **인증**: 필요시 API 키 기반 인증 추가
-3. **HTTPS**: 프로덕션에서는 리버스 프록시(nginx, caddy)를 통한 HTTPS 사용 권장
-4. **노드 검증**: 등록된 노드의 실제 접근 가능 여부 검증 로직 추가 고려
+1. **DDoS 방�?**: ?�로?�션 ?�경?�서??rate limiting 추�? 권장
+2. **?�증**: ?�요??API ??기반 ?�증 추�?
+3. **HTTPS**: ?�로?�션?�서??리버???�록??nginx, caddy)�??�한 HTTPS ?�용 권장
+4. **?�드 검�?*: ?�록???�드???�제 ?�근 가???��? 검�?로직 추�? 고려
 
-## 모니터링
+## 모니?�링
 
-DNS 서버 상태는 `/health` 엔드포인트로 모니터링할 수 있습니다:
+DNS ?�버 ?�태??`/health` ?�드?�인?�로 모니?�링?????�습?�다:
 
 ```bash
 curl http://localhost:8053/health
 ```
 
-통계 확인:
+?�계 ?�인:
 
 ```bash
 curl http://localhost:8053/stats
 ```
 
-## 라이선스
+## ?�이?�스
 
 MIT
+

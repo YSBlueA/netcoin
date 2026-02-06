@@ -1,9 +1,9 @@
 // node/src/p2p/messages.rs
 
 use bincode::{Decode, Encode};
-use netcoin_core::block::Block;
-use netcoin_core::block::BlockHeader;
-use netcoin_core::transaction::Transaction;
+use Astram_core::block::Block;
+use Astram_core::block::BlockHeader;
+use Astram_core::transaction::Transaction;
 
 /// Peer handshake information
 #[derive(Debug, Clone, Encode, Decode)]
@@ -64,3 +64,4 @@ pub enum P2pMessage {
     Ping(u64),
     Pong(u64),
 }
+

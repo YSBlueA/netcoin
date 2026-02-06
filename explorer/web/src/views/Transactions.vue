@@ -24,8 +24,8 @@
             class="table-row"
           >
             <td class="tx-type">
-              <span v-if="tx.from === 'Block_Reward'" class="tx-badge coinbase" title="Mining Reward">‚õèÔ∏è</span>
-              <span v-else class="tx-badge transfer" title="Transfer">üí∏</span>
+              <span v-if="tx.from === 'Block_Reward'" class="tx-badge coinbase" title="Mining Reward">?èÔ∏è</span>
+              <span v-else class="tx-badge transfer" title="Transfer">?í∏</span>
             </td>
             <td class="hash">{{ truncateHash(tx.hash) }}</td>
             <td class="address">{{ truncateAddress(tx.from) }}</td>
@@ -132,9 +132,9 @@ export default {
       }
 
       const divisor = BigInt("1000000000000000000"); // 10^18
-      const ntc = Number(num) / Number(divisor);
+      const ASRM = Number(num) / Number(divisor);
 
-      return ntc.toLocaleString("en-US", {
+      return ASRM.toLocaleString("en-US", {
         minimumFractionDigits: 0,
         maximumFractionDigits: 18,
       });
@@ -291,3 +291,4 @@ td {
   color: #999;
 }
 </style>
+

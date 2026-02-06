@@ -4,11 +4,11 @@ mod wallet;
 use clap::Parser;
 use commands::*;
 
-use netcoin_config::config::Config;
+use Astram_config::config::Config;
 
 #[derive(Parser)]
-#[command(name = "netcoin-wallet")]
-#[command(about = "NetCoin CLI Wallet", long_about = None)]
+#[command(name = "Astram-wallet")]
+#[command(about = "Astram CLI Wallet", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -22,8 +22,8 @@ fn main() {
         Commands::GenerateEth => generate_eth_wallet(),
         Commands::Balance { address } => get_balance(&address),
         Commands::Send { to, amount } => {
-            let amount_natoshi = ntc_to_natoshi(amount);
-            println!("📤 Sending {} NTC to {}", amount, to);
+            let amount_natoshi = ASRM_to_natoshi(amount);
+            println!("Sending {} ASRM to {}", amount, to);
             send_transaction(&to, amount_natoshi)
         }
         Commands::Config { subcommand } => match subcommand {

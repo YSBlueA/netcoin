@@ -1,6 +1,6 @@
 /// Ethereum-compatible JSON-RPC server for MetaMask integration
 use crate::NodeHandle;
-use netcoin_core::transaction::{BINCODE_CONFIG, Transaction, TransactionInput, TransactionOutput};
+use Astram_core::transaction::{BINCODE_CONFIG, Transaction, TransactionInput, TransactionOutput};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -115,7 +115,7 @@ async fn handle_rpc(
 // RPC Method implementations
 
 fn eth_chain_id(id: Value) -> JsonRpcResponse {
-    // Chain ID for NetCoin (use a unique ID, e.g., 8888)
+    // Chain ID for Astram (use a unique ID, e.g., 8888)
     JsonRpcResponse::success(id, json!("0x22b8")) // 8888 in hex
 }
 
@@ -211,7 +211,7 @@ async fn eth_send_raw_transaction(
             hasher.finalize(&mut eth_tx_hash);
             let eth_tx_hash_hex = hex::encode(&eth_tx_hash);
 
-            log::info!("📝 Ethereum transaction hash: 0x{}", eth_tx_hash_hex);
+            log::info!("Ethereum transaction hash: 0x{}", eth_tx_hash_hex);
 
             // Decode Ethereum transaction (RLP encoded)
             let eth_tx = match decode_ethereum_transaction(&tx_bytes) {
@@ -227,15 +227,15 @@ async fn eth_send_raw_transaction(
             };
 
             log::info!(
-                "📩 MetaMask transaction: from={}, to={}, value={}, nonce={}",
+                "[INFO] MetaMask transaction: from={}, to={}, value={}, nonce={}",
                 eth_tx.from,
                 eth_tx.to,
                 eth_tx.value,
                 eth_tx.nonce
             );
 
-            // Convert Ethereum transaction to NetCoin UTXO transaction
-            let netcoin_tx = match convert_eth_to_utxo_transaction(eth_tx, node.clone()).await {
+            // Convert Ethereum transaction to Astram UTXO transaction
+            let Astram_tx = match convert_eth_to_utxo_transaction(eth_tx, node.clone()).await {
                 Ok(tx) => tx,
                 Err(e) => {
                     log::error!("Failed to convert Ethereum tx to UTXO: {}", e);
@@ -248,29 +248,29 @@ async fn eth_send_raw_transaction(
             };
 
             log::info!(
-                "✅ Converted to NetCoin UTXO transaction: txid={}, eth_hash={}",
-                netcoin_tx.txid,
-                netcoin_tx.eth_hash
+                "[INFO] Converted to Astram UTXO transaction: txid={}, eth_hash={}",
+                Astram_tx.txid,
+                Astram_tx.eth_hash
             );
 
             // Add to mempool
             let mut state = node.lock().unwrap();
 
             // Check if already seen
-            if state.seen_tx.contains_key(&netcoin_tx.txid) {
-                log::warn!("Transaction already seen: {}", netcoin_tx.txid);
-                return JsonRpcResponse::success(id, json!(netcoin_tx.eth_hash));
+            if state.seen_tx.contains_key(&Astram_tx.txid) {
+                log::warn!("Transaction already seen: {}", Astram_tx.txid);
+                return JsonRpcResponse::success(id, json!(Astram_tx.eth_hash));
             }
 
             // Verify signatures
-            if !netcoin_tx.verify_signatures().unwrap_or(false) {
+            if !Astram_tx.verify_signatures().unwrap_or(false) {
                 log::error!("Transaction signature verification failed");
                 return JsonRpcResponse::error(id, -32000, "Invalid signature".to_string());
             }
 
-            // 🔒 Security: Check for double-spending in mempool
+            // Security: Check for double-spending in mempool
             let mut tx_utxos = std::collections::HashSet::new();
-            for inp in &netcoin_tx.inputs {
+            for inp in &Astram_tx.inputs {
                 tx_utxos.insert(format!("{}:{}", inp.txid, inp.vout));
             }
 
@@ -280,7 +280,7 @@ async fn eth_send_raw_transaction(
                     if tx_utxos.contains(&pending_utxo) {
                         log::warn!(
                             "Double-spend attempt via eth_sendRawTransaction: TX {} tries to use UTXO {} already used by pending TX {}",
-                            netcoin_tx.txid,
+                            Astram_tx.txid,
                             pending_utxo,
                             pending_tx.txid
                         );
@@ -298,26 +298,26 @@ async fn eth_send_raw_transaction(
 
             // Add to pending
             let now = chrono::Utc::now().timestamp();
-            state.seen_tx.insert(netcoin_tx.txid.clone(), now);
-            state.pending.push(netcoin_tx.clone());
+            state.seen_tx.insert(Astram_tx.txid.clone(), now);
+            state.pending.push(Astram_tx.clone());
 
             // Store mapping: eth_hash -> txid
             state
-                .eth_to_netcoin_tx
-                .insert(netcoin_tx.eth_hash.clone(), netcoin_tx.txid.clone());
+                .eth_to_Astram_tx
+                .insert(Astram_tx.eth_hash.clone(), Astram_tx.txid.clone());
 
             log::info!(
-                "🗺️ Stored mapping: ETH hash {} -> NetCoin txid {}",
-                netcoin_tx.eth_hash,
-                netcoin_tx.txid
+                "[INFO] Stored mapping: ETH hash {} -> Astram txid {}",
+                Astram_tx.eth_hash,
+                Astram_tx.txid
             );
-            log::info!("✅ Transaction added to mempool: {}", netcoin_tx.txid);
-            log::info!("📊 Current mapping size: {}", state.eth_to_netcoin_tx.len());
+            log::info!("[INFO] Transaction added to mempool: {}", Astram_tx.txid);
+            log::info!("[INFO] Current mapping size: {}", state.eth_to_Astram_tx.len());
 
             // Broadcast to peers
             let p2p_clone = state.p2p.clone();
-            let tx_clone = netcoin_tx.clone();
-            let eth_hash_result = netcoin_tx.eth_hash.clone();
+            let tx_clone = Astram_tx.clone();
+            let eth_hash_result = Astram_tx.eth_hash.clone();
             drop(state); // Release lock before spawning
 
             tokio::spawn(async move {
@@ -326,7 +326,7 @@ async fn eth_send_raw_transaction(
 
             // Return Ethereum transaction hash (what MetaMask expects)
             log::info!(
-                "📤 Returning ETH transaction hash to MetaMask: {}",
+                "[INFO] Returning ETH transaction hash to MetaMask: {}",
                 eth_hash_result
             );
             return JsonRpcResponse::success(id, json!(eth_hash_result));
@@ -559,7 +559,7 @@ fn recover_sender_address_eip155(
     let address = format!("0x{}", hex::encode(&pub_hash[12..]));
 
     log::info!(
-        "🔑 Recovered sender: {} (chain_id={}, v={})",
+        "Recovered sender: {} (chain_id={}, v={})",
         address,
         chain_id,
         v
@@ -570,7 +570,7 @@ fn recover_sender_address_eip155(
     Ok((address, pubkey_hex))
 }
 
-/// Convert Ethereum transaction to NetCoin UTXO transaction
+/// Convert Ethereum transaction to Astram UTXO transaction
 async fn convert_eth_to_utxo_transaction(
     eth_tx: EthereumTransaction,
     node: NodeHandle,
@@ -592,7 +592,7 @@ async fn convert_eth_to_utxo_transaction(
     }
 
     log::info!(
-        "Converting: {} NTC from {} to {}",
+        "Converting: {} ASRM from {} to {}",
         amount,
         from_addr,
         to_addr
@@ -689,10 +689,10 @@ async fn convert_eth_to_utxo_transaction(
     let actual_tx_size = tx_bytes.len();
 
     // Calculate minimum required fee based on actual size
-    let min_fee_required = netcoin_core::config::calculate_min_fee(actual_tx_size);
+    let min_fee_required = Astram_core::config::calculate_min_fee(actual_tx_size);
 
     log::info!(
-        "Transaction size: {} bytes, ETH fee: {} natoshi, NetCoin min required: {} natoshi",
+        "Transaction size: {} bytes, ETH fee: {} natoshi, Astram min required: {} natoshi",
         actual_tx_size,
         fee_from_eth,
         min_fee_required
@@ -742,14 +742,14 @@ async fn eth_get_transaction_by_hash(
 
             let state = node.lock().unwrap();
 
-            // Try to resolve Ethereum tx hash to NetCoin txid
-            let netcoin_txid = state
-                .eth_to_netcoin_tx
+            // Try to resolve Ethereum tx hash to Astram txid
+            let Astram_txid = state
+                .eth_to_Astram_tx
                 .get(tx_hash)
                 .map(|s| s.as_str())
                 .unwrap_or(tx_hash);
 
-            if let Ok(Some((tx, block_height))) = state.bc.get_transaction(netcoin_txid) {
+            if let Ok(Some((tx, block_height))) = state.bc.get_transaction(Astram_txid) {
                 // natoshi and wei are now the same (both 10^18 decimals)
                 let amount = tx
                     .outputs
@@ -790,7 +790,7 @@ async fn eth_get_transaction_receipt(
         if let Some(tx_hash) = params.get(0).and_then(|v| v.as_str()) {
             let tx_hash = tx_hash.strip_prefix("0x").unwrap_or(tx_hash);
 
-            log::info!("🔍 eth_getTransactionReceipt called for: 0x{}", tx_hash);
+            log::info!("[INFO] eth_getTransactionReceipt called for: 0x{}", tx_hash);
 
             let state = node.lock().unwrap();
 
@@ -801,7 +801,7 @@ async fn eth_get_transaction_receipt(
             {
                 Ok(Some((tx, block_height))) => {
                     log::info!(
-                        "✅ Transaction found by eth_hash in block {}: txid={}",
+                        "[INFO] Transaction found by eth_hash in block {}: txid={}",
                         block_height,
                         tx.txid
                     );
@@ -859,16 +859,16 @@ async fn eth_get_transaction_receipt(
                         "effectiveGasPrice": "0x2540be400", // 10 Gwei (10,000,000,000 natoshi/gas)
                     });
 
-                    log::info!("📤 Returning receipt: {:?}", receipt);
+                    log::info!("[INFO] Returning receipt: {:?}", receipt);
 
                     return JsonRpcResponse::success(id, receipt);
                 }
                 Ok(None) => {
-                    log::info!("❌ Transaction not found by eth_hash: 0x{}", tx_hash);
+                    log::info!("[WARN] Transaction not found by eth_hash: 0x{}", tx_hash);
                 }
                 Err(e) => {
                     log::error!(
-                        "❌ Error querying transaction by eth_hash 0x{}: {}",
+                        "[ERROR] Error querying transaction by eth_hash 0x{}: {}",
                         tx_hash,
                         e
                     );
@@ -877,13 +877,13 @@ async fn eth_get_transaction_receipt(
         }
     }
 
-    log::info!("📭 Returning null receipt");
+    log::info!("[INFO] Returning null receipt");
     JsonRpcResponse::success(id, json!(null))
 }
 
 fn eth_gas_price(id: Value) -> JsonRpcResponse {
-    // NetCoin fee structure (EVM-compatible 18 decimals):
-    // - Base fee: 100,000,000,000,000 natoshi (100 Twei = 0.0001 NTC)
+    // Astram fee structure (EVM-compatible 18 decimals):
+    // - Base fee: 100,000,000,000,000 natoshi (100 Twei = 0.0001 ASRM)
     // - Per-byte fee: 200,000,000,000 natoshi/byte (200 Gwei/byte)
     // - Typical UTXO tx size: ~300-1000 bytes
     // - Total typical fee: ~160,000,000,000,000-300,000,000,000,000 natoshi
@@ -894,18 +894,18 @@ fn eth_gas_price(id: Value) -> JsonRpcResponse {
     // - Required gasPrice: 160,000,000,000,000 / 21,000 = ~7,619,047,619 natoshi/gas
     // - Use 10,000,000,000 (10 Gwei) for safety margin
     //
-    // This gives: 21,000 × 10,000,000,000 = 210,000,000,000,000 natoshi (~0.00021 NTC)
+    // This gives: 21,000 × 10,000,000,000 = 210,000,000,000,000 natoshi (~0.00021 ASRM)
     // Hex: 10,000,000,000 = 0x2540BE400
     JsonRpcResponse::success(id, json!("0x2540be400")) // 10 Gwei (10,000,000,000 natoshi/gas)
 }
 
 fn eth_estimate_gas(id: Value) -> JsonRpcResponse {
-    // NetCoin UTXO transactions are larger than Ethereum account model
+    // Astram UTXO transactions are larger than Ethereum account model
     // Typical UTXO tx size: 300-1000 bytes
     // Required fee for 1000 byte tx: 100 Twei + (1000 × 200 Gwei) = 300 Twei
     // With gasPrice of 10 Gwei: 300 Twei ÷ 10 Gwei = 30,000 gas
     // Use 50,000 gas for safety margin (covers up to 1450 byte transactions)
-    // Total fee: 50,000 × 10 Gwei = 500 Twei (0.0005 NTC)
+    // Total fee: 50,000 × 10 Gwei = 500 Twei (0.0005 ASRM)
     JsonRpcResponse::success(id, json!("0xc350")) // 50,000 gas (UTXO transaction)
 }
 
@@ -1021,7 +1021,7 @@ fn eth_get_code(id: Value) -> JsonRpcResponse {
 }
 
 fn web3_client_version(id: Value) -> JsonRpcResponse {
-    JsonRpcResponse::success(id, json!("NetCoin/v0.1.0/rust"))
+    JsonRpcResponse::success(id, json!("Astram/v0.1.0/rust"))
 }
 
 /// Create the Ethereum JSON-RPC server
@@ -1042,7 +1042,7 @@ pub fn eth_rpc_routes(
         .and(node_filter)
         .and_then(handle_rpc)
         .with(cors)
-        .with(warp::log("netcoin::eth_rpc"))
+        .with(warp::log("Astram::eth_rpc"))
 }
 
 /// Run the Ethereum JSON-RPC server on port 8545 (standard Ethereum port)
@@ -1050,10 +1050,11 @@ pub async fn run_eth_rpc_server(node: NodeHandle) {
     let routes = eth_rpc_routes(node);
 
     let addr = ([127, 0, 0, 1], 8545);
-    println!("🦊 Ethereum JSON-RPC server running at http://127.0.0.1:8545");
+    println!("[INFO] Ethereum JSON-RPC server running at http://127.0.0.1:8545");
     println!("   Chain ID: 8888 (0x22b8)");
     println!("   Ready for MetaMask connection!");
-    println!("   ✅ CORS enabled for browser access");
+    println!("   [INFO] CORS enabled for browser access");
 
     warp::serve(routes).run(addr).await;
 }
+

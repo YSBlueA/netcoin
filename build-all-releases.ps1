@@ -5,12 +5,12 @@
 
 $ErrorActionPreference = "Stop"
 
-function Write-Info { Write-Host "ℹ️  $args" -ForegroundColor Cyan }
-function Write-Success { Write-Host "✅ $args" -ForegroundColor Green }
-function Write-Warning { Write-Host "⚠️  $args" -ForegroundColor Yellow }
-function Write-Error { Write-Host "❌ $args" -ForegroundColor Red }
+function Write-Info { Write-Host "INFO  $args" -ForegroundColor Cyan }
+function Write-Success { Write-Host "OK    $args" -ForegroundColor Green }
+function Write-Warning { Write-Host "WARN  $args" -ForegroundColor Yellow }
+function Write-Error { Write-Host "ERROR $args" -ForegroundColor Red }
 
-Write-Info "NetCoin Multi-Platform Release Builder"
+Write-Info "Astram Multi-Platform Release Builder"
 Write-Host ""
 
 # Detect current platform
@@ -52,7 +52,7 @@ if ($CurrentPlatform -eq "Windows") {
     $versionMatch = Get-Content "node/Cargo.toml" | Select-String 'version = "(.+)"' | Select-Object -First 1
     $version = if ($versionMatch) { $versionMatch.Matches.Groups[1].Value } else { "unknown" }
     $releaseDir = "release\windows"
-    $archiveName = "netcoin-windows-v$version.zip"
+    $archiveName = "Astram-windows-v$version.zip"
     
     Write-Host "  Platform:  Windows x64"
     Write-Host "  Location:  $releaseDir"
@@ -68,7 +68,7 @@ if ($CurrentPlatform -eq "Windows") {
     Write-Host "  Location:  $releaseDir"
     Write-Host ""
     Write-Info "To create distribution archive:"
-    Write-Host "  tar -czf netcoin-$platform.tar.gz -C release $platform"
+    Write-Host "  tar -czf Astram-$platform.tar.gz -C release $platform"
 }
 
 Write-Host ""
@@ -82,3 +82,4 @@ Write-Info "After building on all platforms, you will have:"
 Write-Host "  release/windows/ - Windows binaries"
 Write-Host "  release/linux/   - Linux binaries"
 Write-Host "  release/macos/   - macOS binaries"
+

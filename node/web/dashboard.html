@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NetCoin Node Dashboard</title>
+    <title>Astram Node Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -344,7 +344,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🖥️ NetCoin Node Dashboard</h1>
+        <h1>Astram Node Dashboard</h1>
 
         <div id="loading" class="loading">
             <div class="spinner"></div>
@@ -352,7 +352,7 @@
         </div>
 
         <div id="error" class="error-message" style="display: none;">
-            <h3>❌ Cannot connect to node</h3>
+            <h3>Cannot connect to node</h3>
             <p id="error-message"></p>
             <button class="retry-btn" onclick="fetchStatus()">Retry</button>
         </div>
@@ -360,7 +360,7 @@
         <div id="dashboard" class="dashboard" style="display: none;">
             <!-- Node Info -->
             <div class="card">
-                <h2>⚙️ Node Info</h2>
+                <h2>Node Info</h2>
                 <div class="info-grid">
                     <div class="info-item">
                         <span class="label">Version</span>
@@ -368,7 +368,7 @@
                     </div>
                     <div class="info-item">
                         <span class="label">Status</span>
-                        <span class="value status-online">🟢 Online</span>
+                        <span class="value status-online">Online</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Uptime</span>
@@ -383,7 +383,7 @@
 
             <!-- Mining Status -->
             <div class="card mining-card" id="mining-card">
-                <h2>⛏️ Mining Status</h2>
+                <h2>Mining Status</h2>
                 <div class="info-grid">
                     <div class="info-item highlight">
                         <span class="label">Status</span>
@@ -406,7 +406,7 @@
 
             <!-- Wallet Info -->
             <div class="card wallet-card">
-                <h2>💰 Wallet Info</h2>
+                <h2>Wallet Info</h2>
                 <div class="info-grid">
                     <div class="info-item">
                         <span class="label">Address</span>
@@ -421,7 +421,7 @@
 
             <!-- Blockchain Status -->
             <div class="card">
-                <h2>⛓️ Blockchain Status</h2>
+                <h2>Blockchain Status</h2>
                 <div class="info-grid">
                     <div class="info-item highlight">
                         <span class="label">Current Height</span>
@@ -448,7 +448,7 @@
 
             <!-- Mempool Status -->
             <div class="card">
-                <h2>📋 Mempool Status</h2>
+                <h2>Mempool Status</h2>
                 <div class="info-grid">
                     <div class="info-item highlight">
                         <span class="label">Pending Transactions</span>
@@ -463,7 +463,7 @@
 
             <!-- Network Status -->
             <div class="card">
-                <h2>🌐 Network Status</h2>
+                <h2>Network Status</h2>
                 <div class="info-grid">
                     <div class="info-item highlight">
                         <span class="label">Connected Peers</span>
@@ -471,7 +471,7 @@
                     </div>
                 </div>
                 <div class="peer-list" id="peer-list-container">
-                    <h3>📡 Peer List</h3>
+                    <h3>Peer List</h3>
                     <div id="peer-list"></div>
                 </div>
             </div>
@@ -484,7 +484,7 @@
                     <span>Auto Refresh (5s)</span>
                 </label>
             </div>
-            <button class="refresh-btn" onclick="fetchStatus()">🔄 Manual Refresh</button>
+            <button class="refresh-btn" onclick="fetchStatus()">Manual Refresh</button>
         </div>
     </div>
 
@@ -523,16 +523,16 @@
         }
 
         function formatBalance(balanceHex) {
-            if (!balanceHex) return '0 NTC';
+            if (!balanceHex) return '0 ASRM';
             
             try {
                 const hex = balanceHex.startsWith('0x') ? balanceHex.slice(2) : balanceHex;
                 const wei = BigInt('0x' + hex);
-                const ntc = Number(wei) / 1e18;
-                return `${ntc.toFixed(4)} NTC`;
+                const ASRM = Number(wei) / 1e18;
+                return `${ASRM.toFixed(4)} ASRM`;
             } catch (e) {
                 console.error('Error formatting balance:', e);
-                return '0 NTC';
+                return '0 ASRM';
             }
         }
 
@@ -594,7 +594,7 @@
                 }
                 
                 const miningStatus = document.getElementById('mining-status');
-                const newMiningText = isMining ? '⚡ Active' : '⏸️ Idle';
+                const newMiningText = isMining ? 'Active' : 'Idle';
                 const newMiningClass = 'value ' + (isMining ? 'mining-active' : 'mining-inactive');
                 
                 if (miningStatus.textContent !== newMiningText) {
@@ -639,7 +639,7 @@
                         peerListContainer.innerHTML = newPeerList;
                     }
                 } else {
-                    const noPeersMsg = '<div class="no-peers">🔍 No connected peers</div>';
+                    const noPeersMsg = '<div class="no-peers">No connected peers</div>';
                     if (peerListContainer.innerHTML !== noPeersMsg) {
                         peerListContainer.innerHTML = noPeersMsg;
                     }
@@ -690,3 +690,4 @@
     </script>
 </body>
 </html>
+

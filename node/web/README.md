@@ -1,93 +1,93 @@
-# NetCoin Node Dashboard
+#+#+#+#+ Astram Node Dashboard
 
-노드 운영자를 위한 실시간 대시보드입니다.
+Astram provides a lightweight dashboard for monitoring a running node.
 
-## 접속 방법
+## Access
 
-노드가 실행 중일 때 브라우저에서 다음 주소로 접속하세요:
+If the node is running, open the dashboard in your browser:
 
 ```
 http://localhost:8333
 ```
 
-## 대시보드 기능
+## Dashboard Features
 
-### 📊 실시간 모니터링
+### Real-time monitoring
 
-대시보드는 5초마다 자동으로 업데이트되며, 다음 정보를 실시간으로 표시합니다:
+The dashboard refreshes every 5 seconds and shows:
 
-#### ⚙️ 노드 정보
+#### Node info
 
-- 노드 버전
-- 온라인 상태
-- 실행 시간 (uptime)
-- 마지막 업데이트 시간
+- Node version
+- Network status
+- Uptime
+- Last update time
 
-#### ⛏️ 채굴 상태
+#### Mining status
 
-- 채굴 활성화 여부 (실시간 표시)
-- 현재 해시레이트 (H/s, KH/s, MH/s, GH/s, TH/s)
-- 채굴 난이도
-- 채굴된 블록 수
+- Mining active/inactive
+- Current hashrate (H/s, KH/s, MH/s, GH/s, TH/s)
+- Current difficulty
+- Blocks mined
 
-#### 💰 지갑 정보
+#### Wallet info
 
-- 지갑 주소
-- 현재 잔액 (NTC 단위)
+- Wallet address
+- Current balance (ASRM)
 
-#### ⛓️ 블록체인 상태
+#### Blockchain status
 
-- 현재 블록 높이
-- 메모리에 로드된 블록 수
-- P2P 동기화 높이
-- 현재 난이도
-- 체인 팁 해시
+- Current block height
+- Blocks loaded in memory
+- P2P sync height
+- Current difficulty
+- Chain tip hash
 
-#### 📋 멤풀 상태
+#### Mempool status
 
-- 대기 중인 트랜잭션 수
-- 확인된 트랜잭션 수
+- Pending transaction count
+- Seen transaction count
 
-#### 🌐 네트워크 상태
+#### Network status
 
-- 연결된 피어 수
-- 각 피어의 블록 높이 목록
+- Connected peer count
+- Peer height list
 
-### 🔄 자동 새로고침
+### Auto refresh
 
-- 기본적으로 5초마다 자동으로 상태를 업데이트합니다
-- 자동 새로고침을 끄고 수동으로 새로고침할 수도 있습니다
-- 우측 하단의 "수동 새로고침" 버튼으로 언제든 즉시 업데이트 가능
+- Auto refresh every 5 seconds by default
+- Toggle auto refresh on/off
+- Manual refresh button updates immediately
 
-## 특징
+## Design Notes
 
-### 🎨 시각적 피드백
+### Visual cues
 
-- 채굴 중일 때 채굴 카드가 녹색으로 표시되며 애니메이션 효과
-- 지갑 카드는 금색 테두리로 강조
-- 호버 효과로 직관적인 UI
-- 반응형 디자인 (모바일 지원)
+- Mining card highlights while mining is active
+- Wallet card uses an accent border
+- Minimal UI with focus on status
+- Responsive layout (mobile friendly)
 
-### 📱 모바일 지원
+### Mobile
 
-- 스마트폰, 태블릿에서도 최적화된 화면
-- 터치 친화적인 UI
+- Optimized for phone and tablet
+- Touch-friendly controls
 
-## 기술 스택
+## Tech Stack
 
-- **프론트엔드**: Vanilla JavaScript + HTML5 + CSS3
-- **백엔드**: Rust (Warp framework)
-- **API**: RESTful JSON API
+- Frontend: Vanilla JavaScript + HTML5 + CSS3
+- Backend: Rust (Warp framework)
+- API: RESTful JSON API
 
-## API 엔드포인트
+## API Endpoints
 
-대시보드는 다음 API를 사용합니다:
+The dashboard uses:
 
 ```
 GET /status
 ```
 
-응답 형식:
+Response example:
 
 ```json
 {
@@ -127,23 +127,23 @@ GET /status
 }
 ```
 
-## 문제 해결
+## Troubleshooting
 
-### 대시보드가 로드되지 않을 때
+### Dashboard does not load
 
-1. 노드가 실행 중인지 확인 (`http://localhost:8333`이 응답하는지)
-2. 브라우저 콘솔에서 에러 메시지 확인
-3. 노드 로그에서 에러 확인
+1. Verify the node is running (http://localhost:8333 should respond).
+2. Check the browser console for errors.
+3. Check the node logs.
 
-### 데이터가 업데이트되지 않을 때
+### Data does not update
 
-- 자동 새로고침이 켜져있는지 확인
-- 수동 새로고침 버튼 클릭
-- 브라우저 새로고침 (F5)
+- Verify auto refresh is enabled.
+- Click the manual refresh button.
+- Hard refresh the browser (F5).
 
-## Explorer와의 차이점
+## Explorer vs Dashboard
 
-- **Node Dashboard** (http://localhost:8333): 노드 운영자용, 채굴/지갑/네트워크 상태 모니터링
-- **Explorer** (http://localhost:8080): 일반 사용자용, 블록체인 데이터 조회
+- Node Dashboard (http://localhost:8333): Node operation, mining, wallet, and network status
+- Explorer (http://localhost:8080): Public chain browsing and block/tx lookup
 
-각각 다른 포트에서 실행되며 독립적으로 동작합니다.
+Both run on different ports and can be used together.

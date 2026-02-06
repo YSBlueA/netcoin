@@ -1,6 +1,6 @@
-# NetCoin Build Guide
+# Astram Build Guide
 
-This guide explains how to build and run NetCoin on different platforms.
+This guide explains how to build and run Astram on different platforms.
 
 ## Prerequisites
 
@@ -105,14 +105,14 @@ cargo build --release
 
 # Build specific component
 cd node && cargo build --release
-cd netcoin-dns && cargo build --release
+cd Astram-dns && cargo build --release
 cd explorer && cargo build --release
 cd wallet-cli && cargo build --release
 
 # Run executables
-./target/release/netcoin-node
-./target/release/netcoin-dns
-./target/release/netcoin-explorer
+./target/release/Astram-node
+./target/release/Astram-dns
+./target/release/Astram-explorer
 ./target/release/wallet-cli
 ```
 
@@ -214,3 +214,4 @@ cargo clean
 ```
 
 Then rebuild using the scripts above.
+

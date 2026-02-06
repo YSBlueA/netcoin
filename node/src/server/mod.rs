@@ -4,9 +4,9 @@ pub use eth_rpc::run_eth_rpc_server;
 
 use crate::NodeHandle;
 use base64::{Engine as _, engine::general_purpose};
-use netcoin_core::block::Block;
-use netcoin_core::transaction::{BINCODE_CONFIG, Transaction};
-use netcoin_core::utxo::Utxo;
+use Astram_core::block::Block;
+use Astram_core::transaction::{BINCODE_CONFIG, Transaction};
+use Astram_core::utxo::Utxo;
 use primitive_types::U256;
 use serde::Deserialize;
 use warp::Filter;
@@ -27,7 +27,7 @@ pub async fn run_server(node: NodeHandle) {
             let state = node.lock().unwrap();
             let bincode_bytes = bincode::encode_to_vec(&state.blockchain, *BINCODE_CONFIG).unwrap();
             let encoded = general_purpose::STANDARD.encode(&bincode_bytes);
-            log::info!("✅ Returning {} blocks from memory", state.blockchain.len());
+            log::info!("[INFO] Returning {} blocks from memory", state.blockchain.len());
             Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
                 "blockchain": encoded,
                 "count": state.blockchain.len(),
@@ -46,7 +46,7 @@ pub async fn run_server(node: NodeHandle) {
                     let bincode_bytes =
                         bincode::encode_to_vec(&all_blocks, *BINCODE_CONFIG).unwrap();
                     let encoded = general_purpose::STANDARD.encode(&bincode_bytes);
-                    log::info!("✅ Returning {} blocks from DB", all_blocks.len());
+                    log::info!("[INFO] Returning {} blocks from DB", all_blocks.len());
                     Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
                         "blockchain": encoded,
                         "count": all_blocks.len(),
@@ -54,7 +54,7 @@ pub async fn run_server(node: NodeHandle) {
                     })))
                 }
                 Err(e) => {
-                    log::error!("❌ Failed to fetch blocks from DB: {}", e);
+                    log::error!("[ERROR] Failed to fetch blocks from DB: {}", e);
                     Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
                         "error": format!("Failed to fetch blockchain from DB: {}", e),
                         "count": 0,
@@ -79,7 +79,7 @@ pub async fn run_server(node: NodeHandle) {
                     let bincode_bytes = bincode::encode_to_vec(&blocks, *BINCODE_CONFIG).unwrap();
                     let encoded = general_purpose::STANDARD.encode(&bincode_bytes);
                     
-                    log::info!("✅ Returning {} blocks from DB (height {} to {:?})", 
+                    log::info!("[INFO] Returning {} blocks from DB (height {} to {:?})", 
                         blocks.len(), from_height, to_height);
                     
                     Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
@@ -91,7 +91,7 @@ pub async fn run_server(node: NodeHandle) {
                     })))
                 }
                 Err(e) => {
-                    log::error!("❌ Failed to fetch blocks from DB: {}", e);
+                    log::error!("[ERROR] Failed to fetch blocks from DB: {}", e);
                     Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
                         "error": format!("Failed to fetch blockchain from DB: {}", e),
                         "count": 0
@@ -110,7 +110,7 @@ pub async fn run_server(node: NodeHandle) {
             let db_count = state.bc.get_all_blocks().map(|b| b.len()).unwrap_or(0);
 
             log::info!(
-                "📊 Block counts - Memory: {}, DB: {}",
+                "[INFO] Block counts - Memory: {}, DB: {}",
                 memory_count,
                 db_count
             );
@@ -155,7 +155,7 @@ pub async fn run_server(node: NodeHandle) {
             let transactions = state.bc.count_transactions().unwrap_or(0);
             let volume = state.bc.calculate_total_volume().unwrap_or(U256::zero());
             log::info!(
-                "📈 Counts endpoint - blocks: {}, transactions: {}, volume: {}",
+                "Counts endpoint - blocks: {}, transactions: {}, volume: {}",
                 blocks,
                 transactions,
                 volume
@@ -207,14 +207,14 @@ pub async fn run_server(node: NodeHandle) {
             let wallet_balance = state.bc.get_address_balance_from_db(&miner_address).unwrap_or(U256::zero());
 
             // Get validation statistics
-            let validation_stats = netcoin_core::security::VALIDATION_STATS.get_stats();
+            let validation_stats = Astram_core::security::VALIDATION_STATS.get_stats();
             let total_failures: u64 = validation_stats.iter().map(|(_, count)| count).sum();
 
             // Get subnet diversity metrics
             let (subnet_24_count, subnet_16_count) = state.p2p.get_subnet_diversity_stats();
 
             log::info!(
-                "🔍 Status requested - Height: {}, Peers: {}, Pending TX: {}, Mining: {}",
+                "Status requested - Height: {}, Peers: {}, Pending TX: {}, Mining: {}",
                 block_height,
                 connected_peers,
                 pending_tx,
@@ -281,7 +281,7 @@ pub async fn run_server(node: NodeHandle) {
         });
 
     // -------------------------------
-    // POST /tx  (client → node)
+    // POST /tx  (client -> node)
     // -------------------------------
     let post_tx = warp::path("tx")
         .and(warp::post())
@@ -310,7 +310,7 @@ pub async fn run_server(node: NodeHandle) {
             // lock
             let mut state = node.lock().unwrap();
 
-            // 중복 방지
+            // Duplicate protection
             if state.seen_tx.contains_key(&tx.txid) {
                 log::info!("Duplicate TX {}", tx.txid);
                 return Ok::<_, warp::Rejection>(with_status(
@@ -321,12 +321,12 @@ pub async fn run_server(node: NodeHandle) {
                 ));
             }
 
-            // signature 검증
+            // Signature check
             match tx.verify_signatures() {
                 Ok(true) => {
                     log::info!("TX {} signature OK", tx.txid);
                     
-                    // 🔒 Security: Validate fee before accepting to mempool
+                    // Security: Validate fee before accepting to mempool
                     // Calculate input/output sums to verify fee
                     let mut input_sum = U256::zero();
                     let mut output_sum = U256::zero();
@@ -353,7 +353,7 @@ pub async fn run_server(node: NodeHandle) {
                     
                     // Check minimum fee
                     let tx_blob = bincode::encode_to_vec(&tx, *BINCODE_CONFIG).unwrap();
-                    let min_fee = netcoin_core::config::calculate_min_fee(tx_blob.len());
+                    let min_fee = Astram_core::config::calculate_min_fee(tx_blob.len());
                     
                     if fee < min_fee {
                         log::warn!("TX {} fee too low: got {}, need {}", tx.txid, fee, min_fee);
@@ -366,7 +366,7 @@ pub async fn run_server(node: NodeHandle) {
                         ));
                     }
 
-                    // 🔒 Security: Check for double-spending in mempool
+                    // Security: Check for double-spending in mempool
                     // Collect all UTXOs used by this transaction
                     let mut tx_utxos = std::collections::HashSet::new();
                     for inp in &tx.inputs {
@@ -427,7 +427,7 @@ pub async fn run_server(node: NodeHandle) {
         });
 
     // -------------------------------
-    // POST /tx/relay  (node → node)
+    // POST /tx/relay  (node -> node)
     // -------------------------------
     let relay_tx = warp::path!("tx" / "relay")
         .and(warp::post())
@@ -448,7 +448,7 @@ pub async fn run_server(node: NodeHandle) {
 
             let mut state = node.lock().unwrap();
 
-            // 중복 체크
+            // Duplicate check
             if state.seen_tx.contains_key(&tx.txid) {
                 return Ok::<_, warp::Rejection>(with_status(
                     warp::reply::json(&serde_json::json!({"status":"duplicate"})),
@@ -456,11 +456,11 @@ pub async fn run_server(node: NodeHandle) {
                 ));
             }
 
-            // seen 기록
+            // Record seen tx
             let now = chrono::Utc::now().timestamp();
             state.seen_tx.insert(tx.txid.clone(), now);
 
-            // 검증: signature + fee
+            // Verify signature + fee
             if !tx.verify_signatures().unwrap_or(false) {
                 log::warn!("relay invalid signature");
                 return Ok::<_, warp::Rejection>(with_status(
@@ -469,7 +469,7 @@ pub async fn run_server(node: NodeHandle) {
                 ));
             }
             
-            // 🔒 Security: Validate fee for relayed transactions
+            // Security: Validate fee for relayed transactions
             let mut input_sum = U256::zero();
             let mut output_sum = U256::zero();
             
@@ -488,7 +488,7 @@ pub async fn run_server(node: NodeHandle) {
             
             let fee = if input_sum >= output_sum { input_sum - output_sum } else { U256::zero() };
             let tx_blob = bincode::encode_to_vec(&tx, *BINCODE_CONFIG).unwrap();
-            let min_fee = netcoin_core::config::calculate_min_fee(tx_blob.len());
+            let min_fee = Astram_core::config::calculate_min_fee(tx_blob.len());
             
             if fee >= min_fee {
                 log::info!("relay accepted tx {} (fee: {} >= {})", tx.txid, fee, min_fee);
@@ -652,13 +652,13 @@ pub async fn run_server(node: NodeHandle) {
             let state = node.lock().unwrap();
             match state.bc.get_address_balance_from_db(&address) {
                 Ok(bal) => {
-                    log::info!("✅ balance lookup success: {} -> {}", address, bal);
+                    log::info!("[INFO] Balance lookup success: {} -> {}", address, bal);
                     Ok::<_, warp::Rejection>(warp::reply::json(
                         &serde_json::json!({"address": address, "balance": bal}),
                     ))
                 }
                 Err(e) => {
-                    log::warn!("⚠️ balance lookup failed for {}: {:?}", address, e);
+                    log::warn!("[WARN] Balance lookup failed for {}: {:?}", address, e);
                     Ok::<_, warp::Rejection>(warp::reply::json(
                         &serde_json::json!({"address": address, "balance": 0}),
                     ))
@@ -707,7 +707,7 @@ pub async fn run_server(node: NodeHandle) {
                 .unwrap_or(0);
 
             log::info!(
-                "📍 Address info for {}: balance={}, received={}, sent={}, tx_count={}",
+                "Address info for {}: balance={}, received={}, sent={}, tx_count={}",
                 address,
                 balance,
                 received,
@@ -765,7 +765,7 @@ pub async fn run_server(node: NodeHandle) {
         });
 
     // -------------------------------
-    // GET /eth_mapping/:eth_hash - Resolve Ethereum tx hash to NetCoin txid
+    // GET /eth_mapping/:eth_hash - Resolve Ethereum tx hash to Astram txid
     let get_eth_mapping = warp::path!("eth_mapping" / String)
         .and(warp::get())
         .and(node_filter.clone())
@@ -774,18 +774,18 @@ pub async fn run_server(node: NodeHandle) {
             // Strip 0x prefix if present
             let eth_hash = eth_hash.strip_prefix("0x").unwrap_or(&eth_hash);
             
-            match state.eth_to_netcoin_tx.get(eth_hash) {
-                Some(netcoin_txid) => {
+            match state.eth_to_Astram_tx.get(eth_hash) {
+                Some(Astram_txid) => {
                     Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
                         "eth_hash": format!("0x{}", eth_hash),
-                        "netcoin_txid": netcoin_txid,
+                        "Astram_txid": Astram_txid,
                         "found": true
                     })))
                 }
                 None => {
                     Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
                         "eth_hash": format!("0x{}", eth_hash),
-                        "netcoin_txid": null,
+                        "Astram_txid": null,
                         "found": false
                     })))
                 }
@@ -822,11 +822,12 @@ pub async fn run_server(node: NodeHandle) {
         .or(get_utxos)
         .or(get_tx)
         .or(get_eth_mapping)
-        .with(warp::log("netcoin::http"))
+        .with(warp::log("Astram::http"))
         .boxed();
 
-    println!("🌐 HTTP server running at http://127.0.0.1:8333");
+    println!("HTTP server running at http://127.0.0.1:8333");
 
     let addr = ([127, 0, 0, 1], 8333);
     warp::serve(routes).run(addr).await;
 }
+

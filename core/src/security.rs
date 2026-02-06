@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Security constants
 pub const MAX_TX_SIZE: usize = 100_000; // 100KB max transaction size
-pub const MIN_OUTPUT_VALUE: u64 = 1_000_000_000_000; // 1 Twei (0.000001 NTC) minimum to prevent dust
+pub const MIN_OUTPUT_VALUE: u64 = 1_000_000_000_000; // 1 Twei (0.000001 ASRM) minimum to prevent dust
 pub const MAX_TX_INPUTS: usize = 1000; // Prevent huge transactions
 pub const MAX_TX_OUTPUTS: usize = 1000;
 pub const MAX_FUTURE_TIMESTAMP: i64 = 7200; // 2 hours tolerance
@@ -331,7 +331,7 @@ pub fn validate_reorg_depth(
 
     if reorg_depth > max_depth {
         return Err(anyhow!(
-            "🚨 REORG DEPTH EXCEEDED: attempted to reorganize {} blocks (max allowed: {}). This may indicate a 51% attack!",
+            "REORG DEPTH EXCEEDED: attempted to reorganize {} blocks (max allowed: {}). This may indicate a 51% attack!",
             reorg_depth,
             max_depth
         ));
@@ -339,7 +339,7 @@ pub fn validate_reorg_depth(
 
     if reorg_depth > max_depth / 2 {
         log::warn!(
-            "⚠️  Large reorganization detected: {} blocks (limit: {}). Monitor for potential attack.",
+            "Large reorganization detected: {} blocks (limit: {}). Monitor for potential attack.",
             reorg_depth,
             max_depth
         );

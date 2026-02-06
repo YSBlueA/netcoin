@@ -1,9 +1,9 @@
 #!/bin/bash
-# Netcoin DNS Server Deployment Script for Ubuntu 24.04
+# Astram DNS Server Deployment Script for Ubuntu 24.04
 
 set -e
 
-echo "=== Netcoin DNS Server Deployment ==="
+echo "=== Astram DNS Server Deployment ==="
 
 # Install Rust if not installed
 if ! command -v cargo &> /dev/null; then
@@ -13,27 +13,27 @@ if ! command -v cargo &> /dev/null; then
 fi
 
 # Build the project
-echo "Building netcoin-dns..."
+echo "Building Astram-dns..."
 cargo build --release
 
 # Create systemd service directory if needed
 echo "Setting up systemd service..."
 
 # Copy binary to /usr/local/bin
-sudo cp target/release/netcoin-dns /usr/local/bin/
-sudo chmod +x /usr/local/bin/netcoin-dns
+sudo cp target/release/Astram-dns /usr/local/bin/
+sudo chmod +x /usr/local/bin/Astram-dns
 
 # Create systemd service file
-sudo tee /etc/systemd/system/netcoin-dns.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/Astram-dns.service > /dev/null <<EOF
 [Unit]
-Description=Netcoin DNS Server
+Description=Astram DNS Server
 After=network.target
 
 [Service]
 Type=simple
 User=$USER
 WorkingDirectory=$HOME
-ExecStart=/usr/local/bin/netcoin-dns --port 8053 --max-age 3600
+ExecStart=/usr/local/bin/Astram-dns --port 8053 --max-age 3600
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -45,21 +45,22 @@ EOF
 
 # Reload systemd and enable service
 sudo systemctl daemon-reload
-sudo systemctl enable netcoin-dns.service
-sudo systemctl start netcoin-dns.service
+sudo systemctl enable Astram-dns.service
+sudo systemctl start Astram-dns.service
 
 echo "=== Deployment Complete ==="
 echo "Service status:"
-sudo systemctl status netcoin-dns.service --no-pager
+sudo systemctl status Astram-dns.service --no-pager
 
 echo ""
 echo "Useful commands:"
-echo "  Check status: sudo systemctl status netcoin-dns"
-echo "  View logs: sudo journalctl -u netcoin-dns -f"
-echo "  Restart: sudo systemctl restart netcoin-dns"
-echo "  Stop: sudo systemctl stop netcoin-dns"
+echo "  Check status: sudo systemctl status Astram-dns"
+echo "  View logs: sudo journalctl -u Astram-dns -f"
+echo "  Restart: sudo systemctl restart Astram-dns"
+echo "  Stop: sudo systemctl stop Astram-dns"
 echo ""
 echo "DNS Server will be available at:"
 echo "  http://161.33.19.183:8053"
 echo "  Health check: http://161.33.19.183:8053/health"
 echo "  Node stats: http://161.33.19.183:8053/stats"
+

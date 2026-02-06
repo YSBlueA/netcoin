@@ -1,14 +1,14 @@
 #!/usr/bin/env pwsh
-# NetCoin Release Build Script for Windows
+# Astram Release Build Script for Windows
 # This script builds all components and packages them for distribution
 
 $ErrorActionPreference = "Stop"
 
-function Write-Info { Write-Host "ℹ️  $args" -ForegroundColor Cyan }
-function Write-Success { Write-Host "✅ $args" -ForegroundColor Green }
-function Write-Error { Write-Host "❌ $args" -ForegroundColor Red }
+function Write-Info { Write-Host "INFO  $args" -ForegroundColor Cyan }
+function Write-Success { Write-Host "OK    $args" -ForegroundColor Green }
+function Write-Error { Write-Host "ERROR $args" -ForegroundColor Red }
 
-Write-Info "NetCoin Release Builder for Windows"
+Write-Info "Astram Release Builder for Windows"
 Write-Host ""
 
 # Clean previous release
@@ -37,9 +37,9 @@ Write-Success "Build completed successfully!"
 # Copy executables
 Write-Info "Copying executables..."
 $Executables = @(
-    "netcoin-node.exe",
-    "netcoin-dns.exe",
-    "netcoin-explorer.exe",
+    "Astram-node.exe",
+    "Astram-dns.exe",
+    "Astram-explorer.exe",
     "wallet-cli.exe"
 )
 
@@ -57,8 +57,8 @@ foreach ($exe in $Executables) {
 Write-Info "Creating launcher script..."
 $LauncherContent = @'
 #!/usr/bin/env pwsh
-# NetCoin Launcher for Windows
-# Usage: .\netcoin.ps1 [node|dns|explorer|wallet] [args...]
+# Astram Launcher for Windows
+# Usage: .\Astram.ps1 [node|dns|explorer|wallet] [args...]
 
 param(
     [Parameter(Position=0)]
@@ -72,9 +72,9 @@ param(
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 switch ($Component) {
-    'node'     { $exe = "netcoin-node.exe" }
-    'dns'      { $exe = "netcoin-dns.exe" }
-    'explorer' { $exe = "netcoin-explorer.exe" }
+    'node'     { $exe = "Astram-node.exe" }
+    'dns'      { $exe = "Astram-dns.exe" }
+    'explorer' { $exe = "Astram-explorer.exe" }
     'wallet'   { $exe = "wallet-cli.exe" }
 }
 
@@ -85,16 +85,16 @@ if (-not (Test-Path $exePath)) {
     exit 1
 }
 
-Write-Host "Starting NetCoin $Component..." -ForegroundColor Green
+Write-Host "Starting Astram $Component..." -ForegroundColor Green
 & $exePath @RemainingArgs
 '@
 
-Set-Content -Path "$ReleaseDir/netcoin.ps1" -Value $LauncherContent
+Set-Content -Path "$ReleaseDir/Astram.ps1" -Value $LauncherContent
 
 # Copy sample config
 Write-Info "Creating sample configuration..."
 $ConfigContent = @'
-# NetCoin Configuration Example
+# Astram Configuration Example
 # Copy this file and modify as needed
 
 # Node Settings
@@ -108,8 +108,8 @@ DNS_PORT=8053
 EXPLORER_PORT=3000
 
 # Data Directory
-# Windows: %USERPROFILE%\.netcoin
-DATA_DIR=%USERPROFILE%\.netcoin
+# Windows: %USERPROFILE%\.Astram
+DATA_DIR=%USERPROFILE%\.Astram
 '@
 
 Set-Content -Path "$ReleaseDir/config/example.conf" -Value $ConfigContent
@@ -117,7 +117,7 @@ Set-Content -Path "$ReleaseDir/config/example.conf" -Value $ConfigContent
 # Create README
 Write-Info "Creating README..."
 $ReadmeContent = @'
-# NetCoin for Windows
+# Astram for Windows
 
 ## Quick Start
 
@@ -127,23 +127,23 @@ $ReadmeContent = @'
 
 ```powershell
 # Run blockchain node
-.\netcoin.ps1 node
+.\Astram.ps1 node
 
 # Run DNS server
-.\netcoin.ps1 dns
+.\Astram.ps1 dns
 
 # Run blockchain explorer
-.\netcoin.ps1 explorer
+.\Astram.ps1 explorer
 
 # Run wallet CLI
-.\netcoin.ps1 wallet
+.\Astram.ps1 wallet
 ```
 
 ## Components
 
-- **netcoin-node.exe** - Main blockchain node (HTTP: 8333, P2P: 8335)
-- **netcoin-dns.exe** - DNS discovery server (Port: 8053)
-- **netcoin-explorer.exe** - Web-based blockchain explorer (Port: 3000)
+- **Astram-node.exe** - Main blockchain node (HTTP: 8333, P2P: 8335)
+- **Astram-dns.exe** - DNS discovery server (Port: 8053)
+- **Astram-explorer.exe** - Web-based blockchain explorer (Port: 3000)
 - **wallet-cli.exe** - Command-line wallet interface
 
 ## System Requirements
@@ -154,7 +154,7 @@ $ReadmeContent = @'
 
 ## Data Directory
 
-NetCoin stores blockchain data in: `%USERPROFILE%\.netcoin`
+Astram stores blockchain data in: `%USERPROFILE%\.Astram`
 
 To reset the blockchain, delete this directory while no nodes are running.
 
@@ -164,7 +164,7 @@ See `config/example.conf` for configuration options.
 
 ## Support
 
-For issues and documentation, visit: https://github.com/yourorg/netcoin
+For issues and documentation, visit: https://github.com/yourorg/Astram
 '@
 
 Set-Content -Path "$ReleaseDir/README.md" -Value $ReadmeContent
@@ -173,7 +173,7 @@ Set-Content -Path "$ReleaseDir/README.md" -Value $ReadmeContent
 $VersionMatch = Get-Content "node/Cargo.toml" | Select-String 'version = "(.+)"' | Select-Object -First 1
 $Version = if ($VersionMatch) { $VersionMatch.Matches.Groups[1].Value } else { "unknown" }
 $VersionInfo = @"
-NetCoin v$Version
+Astram v$Version
 Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 Platform: Windows x64
 "@
@@ -187,5 +187,6 @@ Write-Info "To distribute: compress the folder and share the archive"
 Write-Host ""
 Write-Info "Next steps:"
 Write-Host "  1. Test the executables in release/windows/"
-Write-Host "  2. Create a ZIP archive: Compress-Archive -Path release/windows/* -DestinationPath netcoin-windows-v$Version.zip"
+Write-Host "  2. Create a ZIP archive: Compress-Archive -Path release/windows/* -DestinationPath Astram-windows-v$Version.zip"
 Write-Host "  3. Share the ZIP file with users"
+

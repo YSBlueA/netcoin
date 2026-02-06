@@ -1,19 +1,19 @@
 // Use library exports instead of declaring local modules to avoid duplicate crate types
+use Astram_config::config::Config;
+use Astram_core::Blockchain;
+use Astram_core::block;
+use Astram_core::block::{Block, BlockHeader, compute_header_hash, compute_merkle_root};
+use Astram_core::config::{calculate_block_reward, initial_block_reward};
+use Astram_core::consensus;
+use Astram_core::transaction::{BINCODE_CONFIG, Transaction};
+use Astram_core::utxo::Utxo;
+use Astram_node::NodeHandle;
+use Astram_node::NodeState;
+use Astram_node::p2p::service::P2PService;
+use Astram_node::server::run_server;
 use chrono::Utc;
 use hex;
 use log::info;
-use netcoin_config::config::Config;
-use netcoin_core::Blockchain;
-use netcoin_core::block;
-use netcoin_core::block::{Block, BlockHeader, compute_header_hash, compute_merkle_root};
-use netcoin_core::config::{calculate_block_reward, initial_block_reward};
-use netcoin_core::consensus;
-use netcoin_core::transaction::{BINCODE_CONFIG, Transaction};
-use netcoin_core::utxo::Utxo;
-use netcoin_node::NodeHandle;
-use netcoin_node::NodeState;
-use netcoin_node::p2p::service::P2PService;
-use netcoin_node::server::run_server;
 use primitive_types::U256;
 use serde::Deserialize;
 use serde_json::Value;
@@ -44,7 +44,7 @@ struct DnsNodesResponse {
 
 #[tokio::main]
 async fn main() {
-    println!("🚀 Netcoin node starting...");
+    println!("[INFO] Astram node starting...");
 
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
@@ -70,16 +70,16 @@ async fn main() {
     // Check for stale LOCK file and remove it if necessary
     let lock_path = std::path::Path::new(&db_path).join("LOCK");
     if lock_path.exists() {
-        println!("⚠️  Found existing LOCK file, attempting to clean up...");
+        println!("[WARN] Found existing LOCK file, attempting to clean up...");
 
         // Try to remove stale lock file
         match fs::remove_file(&lock_path) {
             Ok(_) => {
-                println!("✅ Removed stale LOCK file");
+                println!("[INFO] Removed stale LOCK file");
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
             Err(e) => {
-                eprintln!("❌ Failed to remove LOCK file: {}", e);
+                eprintln!("[ERROR] Failed to remove LOCK file: {}", e);
                 eprintln!("Another instance may be running. Please stop it first.");
                 std::process::exit(1);
             }
@@ -107,7 +107,7 @@ async fn main() {
         pending: vec![],
         seen_tx: HashMap::new(),
         p2p: p2p_service.manager(),
-        eth_to_netcoin_tx: HashMap::new(),
+        eth_to_Astram_tx: HashMap::new(),
         mining_cancel_flag: mining_cancel_flag.clone(),
         orphan_blocks: HashMap::new(),
         mining_active: Arc::new(AtomicBool::new(false)),
@@ -136,7 +136,7 @@ async fn main() {
         }
     };
     p2p_service.manager().set_my_height(my_height);
-    info!("📊 Local blockchain height set to: {}", my_height);
+    info!("[INFO] Local blockchain height set to: {}", my_height);
 
     // Get listening port from environment or use default
     let node_port_str = std::env::var("NODE_PORT").unwrap_or_else(|_| "8335".to_string());
@@ -154,7 +154,7 @@ async fn main() {
     // Start Ethereum JSON-RPC server for MetaMask
     let eth_rpc_node = node_handle.clone();
     tokio::spawn(async move {
-        netcoin_node::server::run_eth_rpc_server(eth_rpc_node).await;
+        Astram_node::server::run_eth_rpc_server(eth_rpc_node).await;
     });
 
     // Graceful shutdown flag
@@ -166,13 +166,13 @@ async fn main() {
     tokio::spawn(async move {
         match signal::ctrl_c().await {
             Ok(()) => {
-                println!("\n⚠️  Shutdown signal received, cleaning up...");
+                println!("\n[WARN] Shutdown signal received, cleaning up...");
                 shutdown_flag_clone.store(true, OtherOrdering::SeqCst);
 
                 // Cancel ongoing mining immediately
                 let state = node_for_shutdown.lock().unwrap();
                 state.mining_cancel_flag.store(true, OtherOrdering::SeqCst);
-                println!("⛏️  Mining cancellation requested...");
+                println!("[WARN] Mining cancellation requested...");
             }
             Err(err) => {
                 eprintln!("Error setting up signal handler: {}", err);
@@ -184,25 +184,25 @@ async fn main() {
         start_services(node_handle.clone(), miner_address, shutdown_flag.clone()).await;
 
     // Wait for all background tasks to complete
-    println!("⏳ Waiting for all tasks to complete...");
+    println!("[INFO] Waiting for all tasks to complete...");
     for handle in task_handles {
         let _ = handle.await;
     }
 
     // Abort HTTP server (it runs indefinitely)
     server_handle.abort();
-    println!("🛭 HTTP server stopped");
+    println!("[INFO] HTTP server stopped");
 
     // Give more time for all resources to be released
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Cleanup: Close database properly
     {
-        println!("📦 Closing database...");
+        println!("[INFO] Closing database...");
 
         // Check Arc reference count
         let arc_count = Arc::strong_count(&node_handle);
-        println!("🔍 Arc strong references remaining: {}", arc_count);
+        println!("[INFO] Arc strong references remaining: {}", arc_count);
 
         // First, try to flush the DB while we still have a reference
         {
@@ -211,12 +211,12 @@ async fn main() {
                 if let Err(e) = state.bc.db.flush() {
                     log::warn!("Failed to flush DB: {}", e);
                 } else {
-                    println!("✅ Database flushed");
+                    println!("[OK] Database flushed");
                 }
 
                 // Cancel IO operations
                 state.bc.db.cancel_all_background_work(true);
-                println!("✅ Background work cancelled");
+                println!("[INFO] Background work cancelled");
             }
         }
 
@@ -226,13 +226,13 @@ async fn main() {
         // Drop the node_handle to release our reference
         drop(node_handle);
 
-        println!("✅ All references released");
+        println!("[INFO] All references released");
     }
 
     // Final wait to ensure LOCK file is released by OS
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    println!("\n👋 Netcoin node stopped gracefully");
+    println!("\n[OK] Astram node stopped gracefully");
 
     // Force process exit to ensure all resources are released
     std::process::exit(0);
@@ -248,14 +248,14 @@ async fn main() {
         0
     };
     p2p.set_my_height(my_height);
-    println!("📊 Local blockchain height: {}", my_height);
+    println!("Local blockchain height: {}", my_height);
 
     /*
     {
         let p2p_clone = p2p.clone();
         p2p_clone.set_on_block(|block: block::Block| {
             tokio::spawn(async move {
-                match netcoin_core::consensus::validate_and_add_block(block).await {
+                match Astram_core::consensus::validate_and_add_block(block).await {
                     Ok(_) => info!("Block added via p2p"),
                     Err(e) => log::warn!("Received invalid block from p2p: {:?}", e),
                 }
@@ -296,15 +296,15 @@ async fn main() {
         });
     }
 
-    // 블록체인 동기화
-    // 현재 DB에 있는 블록 높이와 Peer에 연결된 블록 높이를 비교하여 부족한 블록을 요청하고 동기화하는 로직을 구현해야 합니다.
+    // TODO: Implement blockchain sync logic.
+    // Compare local DB height with peers and request missing blocks.
 
     // If chain is empty (no tip), create genesis from wallet address
     // Reuse the already loaded miner address
 
     // If DB has no tip, create genesis block
     if bc.chain_tip.is_none() {
-        println!("No chain tip found — creating genesis block...");
+        println!("No chain tip found - creating genesis block...");
         let genesis_hash = bc
             .create_genesis(&miner_address)
             .expect("create_genesis failed");
@@ -326,7 +326,7 @@ async fn main() {
                 pending: vec![],
                 seen_tx: HashMap::new(),
                 p2p: p2p.clone(),
-                eth_to_netcoin_tx: HashMap::new(),
+                eth_to_Astram_tx: HashMap::new(),
                 mining_cancel_flag: mining_cancel_flag.clone(),
                 orphan_blocks: HashMap::new(),
                 mining_active: Arc::new(AtomicBool::new(false)),
@@ -369,7 +369,7 @@ async fn main() {
                             Ok(_) => {
                                 info!("Block added via p2p");
                                 state.blockchain.push(block);
-                                state.enforce_memory_limit(); // 🔒 Security: Enforce memory limit
+                                state.enforce_memory_limit(); // Security: Enforce memory limit
                             }
                             Err(e) => log::warn!("Received invalid block from p2p: {:?}", e),
                         }
@@ -409,7 +409,7 @@ async fn main() {
         pending: vec![],
         seen_tx: HashMap::new(),
         p2p: p2p.clone(),
-        eth_to_netcoin_tx: HashMap::new(),
+        eth_to_Astram_tx: HashMap::new(),
         mining_cancel_flag: mining_cancel_flag.clone(),
         orphan_blocks: HashMap::new(),
         mining_active: Arc::new(AtomicBool::new(false)),
@@ -452,7 +452,7 @@ async fn main() {
                     Ok(_) => {
                         info!("Block added via p2p");
                         state.blockchain.push(block);
-                        state.enforce_memory_limit(); // 🔒 Security: Enforce memory limit
+                        state.enforce_memory_limit(); // Security: Enforce memory limit
                     }
                     Err(e) => log::warn!("Received invalid block from p2p: {:?}", e),
                 }
@@ -524,7 +524,7 @@ async fn fetch_best_nodes_from_dns(
     let dns_url =
         std::env::var("DNS_SERVER_URL").unwrap_or_else(|_| "http://161.33.19.183:8053".to_string());
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5)) // 5초 타임아웃
+        .timeout(Duration::from_secs(5)) // 5 second timeout
         .build()?;
     let nodes_url = format!("{}/nodes?limit={}", dns_url, limit * 3); // Fetch more to test latency
 
@@ -643,7 +643,7 @@ async fn fetch_best_nodes_from_dns(
         });
 
         // Log top peers
-        info!("\n🎯 Best peers by composite score:");
+        info!("\n[INFO] Best peers by composite score:");
         for (i, peer) in scored_peers.iter().take(limit).enumerate() {
             info!(
                 "  {}. {} - score: {:.3} (height: {}, uptime: {:.1}h, latency: {}ms)",
@@ -690,7 +690,7 @@ async fn register_with_dns(node_handle: NodeHandle) -> Result<(), Box<dyn std::e
     };
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5)) // 5초 타임아웃
+        .timeout(Duration::from_secs(5)) // 5 second timeout
         .build()?;
     let register_url = format!("{}/register", dns_url);
 
@@ -737,9 +737,9 @@ async fn register_with_dns(node_handle: NodeHandle) -> Result<(), Box<dyn std::e
 /// Synchronize blockchain with peers
 async fn sync_blockchain(
     node_handle: NodeHandle,
-    p2p_handle: Arc<netcoin_node::p2p::manager::PeerManager>,
+    p2p_handle: Arc<Astram_node::p2p::manager::PeerManager>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    info!("🔄 Starting blockchain synchronization...");
+    info!("[INFO] Starting blockchain synchronization...");
 
     let my_height = {
         let state = node_handle.lock().unwrap();
@@ -754,22 +754,22 @@ async fn sync_blockchain(
         }
     };
 
-    info!("📊 Local blockchain height: {}", my_height);
+    info!("[INFO] Local blockchain height: {}", my_height);
 
     // Get peer heights
     let peer_heights = p2p_handle.get_peer_heights();
 
     if peer_heights.is_empty() {
-        info!("⚠️  No peers connected yet, skipping sync");
+        info!("[WARN] No peers connected yet, skipping sync");
         return Ok(());
     }
 
     let max_peer_height = peer_heights.values().max().copied().unwrap_or(0);
-    info!("📊 Maximum peer height: {}", max_peer_height);
+    info!("[INFO] Maximum peer height: {}", max_peer_height);
 
     if my_height >= max_peer_height {
         info!(
-            "✅ Blockchain is already up to date (height: {})",
+            "[INFO] Blockchain is already up to date (height: {})",
             my_height
         );
         return Ok(());
@@ -777,13 +777,13 @@ async fn sync_blockchain(
 
     let blocks_behind = max_peer_height - my_height;
     info!(
-        "⬇️  Need to sync {} blocks (from {} to {})",
+        "[INFO] Need to sync {} blocks (from {} to {})",
         blocks_behind, my_height, max_peer_height
     );
 
     // For initial sync (when we have no blocks), request genesis block first
     if my_height == 0 {
-        info!("🔄 Requesting genesis block from peers...");
+        info!("[INFO] Requesting genesis block from peers...");
         // Request with empty locator to get blocks from the beginning
         p2p_handle.request_headers_from_peers(vec![], None);
     } else {
@@ -797,7 +797,7 @@ async fn sync_blockchain(
                 }
             }
         }
-        info!("🔄 Requesting headers from peers...");
+        info!("[INFO] Requesting headers from peers...");
         p2p_handle.request_headers_from_peers(locator_hashes, None);
     }
 
@@ -829,7 +829,7 @@ async fn sync_blockchain(
         // Check if we made progress
         if current_height > last_height {
             info!(
-                "📥 Sync progress: {} / {} blocks",
+                "[INFO] Sync progress: {} / {} blocks",
                 current_height, max_peer_height
             );
             last_height = current_height;
@@ -850,16 +850,16 @@ async fn sync_blockchain(
         }
 
         if current_height >= max_peer_height {
-            info!("✅ Blockchain synchronized to height {}", current_height);
+            info!("[OK] Blockchain synchronized to height {}", current_height);
             break;
         }
 
         if sync_start.elapsed() > sync_timeout {
             info!(
-                "⚠️  Sync timeout reached. Current height: {} (target: {})",
+                "[WARN] Sync timeout reached. Current height: {} (target: {})",
                 current_height, max_peer_height
             );
-            info!("💡 Will continue syncing in background via periodic header requests");
+            info!("[INFO] Will continue syncing in background via periodic header requests");
             break;
         }
     }
@@ -875,7 +875,7 @@ async fn start_services(
     Vec<tokio::task::JoinHandle<()>>,
     tokio::task::JoinHandle<()>,
 ) {
-    println!("🚀 my address {}", miner_address);
+    println!("[INFO] my address {}", miner_address);
 
     let mut task_handles = Vec::new();
 
@@ -938,7 +938,10 @@ async fn start_services(
         // Initial connection to best nodes
         match fetch_best_nodes_from_dns(node_handle_for_p2p.clone(), my_node_port, 10).await {
             Ok(peer_addrs) => {
-                info!("🌐 Connecting to {} best nodes from DNS", peer_addrs.len());
+                info!(
+                    "[INFO] Connecting to {} best nodes from DNS",
+                    peer_addrs.len()
+                );
                 for addr in peer_addrs {
                     let p2p_clone = p2p_handle_for_task.clone();
                     let addr_clone = addr.clone();
@@ -946,7 +949,7 @@ async fn start_services(
                         if let Err(e) = p2p_clone.connect_peer(&addr_clone).await {
                             log::warn!("Failed to connect to peer {}: {:?}", addr_clone, e);
                         } else {
-                            info!("✅ Connected to peer: {}", addr_clone);
+                            info!("[OK] Connected to peer: {}", addr_clone);
                         }
                     });
                 }
@@ -970,7 +973,7 @@ async fn start_services(
                     match fetch_best_nodes_from_dns(node_handle_for_p2p.clone(), my_node_port, 10).await {
                 Ok(peer_addrs) => {
                     info!(
-                        "🔄 Refreshing connections to {} best nodes",
+                        "[INFO] Refreshing connections to {} best nodes",
                         peer_addrs.len()
                     );
                     for addr in peer_addrs {
@@ -1005,11 +1008,11 @@ async fn start_services(
     task_handles.push(p2p_task);
 
     // Wait for initial P2P connections to establish
-    info!("⏳ Waiting for P2P connections to establish...");
+    info!("[INFO] Waiting for P2P connections to establish...");
     sleep(Duration::from_secs(5)).await;
 
     // Step 5: Synchronize blockchain with peers
-    info!("📡 Step 5: Synchronizing blockchain with peers...");
+    info!("[INFO] Step 5: Synchronizing blockchain with peers...");
     if let Err(e) = sync_blockchain(node_handle.clone(), p2p_handle.clone()).await {
         log::warn!("Blockchain sync encountered error: {}", e);
     }
@@ -1021,7 +1024,7 @@ async fn start_services(
     });
 
     // Step 6: Start mining
-    println!("⛏️  Step 6: Starting mining...");
+    println!("[INFO] Step 6: Starting mining...");
 
     // Mining loop - run in main task, not spawned
     mining_loop(node_handle.clone(), miner_address, shutdown_flag.clone()).await;
@@ -1041,20 +1044,20 @@ async fn mining_loop(
     let mut miner_backend = requested_backend.clone();
 
     if miner_backend == "cuda" && !cfg!(feature = "cuda-miner") {
-        println!("⚠️  CUDA miner requested but not enabled; falling back to CPU");
+        println!("[WARN] CUDA miner requested but not enabled; falling back to CPU");
         miner_backend = "cpu".to_string();
     }
 
     if miner_backend == "cuda" {
-        println!("🟢 Using CUDA miner backend");
+        println!("[INFO] Using CUDA miner backend");
     } else {
-        println!("🟢 Using CPU miner backend");
+        println!("[INFO] Using CPU miner backend");
     }
 
     loop {
         // Check shutdown flag
         if shutdown_flag.load(OtherOrdering::SeqCst) {
-            info!("⚠️  Shutdown flag detected, stopping mining loop...");
+            info!("[WARN] Shutdown flag detected, stopping mining loop...");
             // Ensure cancel flag is set
             let state = node_handle.lock().unwrap();
             state.mining_cancel_flag.store(true, OtherOrdering::SeqCst);
@@ -1106,7 +1109,7 @@ async fn mining_loop(
 
             if diff != state.bc.difficulty {
                 println!(
-                    "📊 Difficulty adjusted: {} -> {} (block #{})",
+                    "[INFO] Difficulty adjusted: {} -> {} (block #{})",
                     state.bc.difficulty, diff, next_index
                 );
                 // Update blockchain difficulty before mining
@@ -1147,7 +1150,7 @@ async fn mining_loop(
                 }
             }
 
-            // clear pending locally — we'll requeue on failure
+            // clear pending locally ??we'll requeue on failure
             state.pending.clear();
 
             (
@@ -1165,21 +1168,21 @@ async fn mining_loop(
         // prepare block transactions: coinbase + pending
         // NOTE: we pass pending txs to consensus::mine_block_with_coinbase which will prepend coinbase
         let block_txs_for_logging = snapshot_txs.len();
-        println!("⛏️ Mining {} pending tx(s)...", block_txs_for_logging);
+        println!("[INFO] Mining {} pending tx(s)...", block_txs_for_logging);
 
         // Coinbase reward = block reward + total fees
         let base_reward = current_block_reward_snapshot();
         let coinbase_reward = base_reward + total_fees;
 
         if total_fees > U256::zero() {
-            let fees_ntc = total_fees / U256::from(1_000_000_000_000_000_000u64);
+            let fees_ASRM = total_fees / U256::from(1_000_000_000_000_000_000u64);
             println!(
-                "💰 Total fees in block: {} wei ({} NTC)",
-                total_fees, fees_ntc
+                "[INFO] Total fees in block: {} wei ({} ASRM)",
+                total_fees, fees_ASRM
             );
         }
         println!(
-            "💎 Coinbase reward: {} (base: {} + fees: {})",
+            "[INFO] Coinbase reward: {} (base: {} + fees: {})",
             coinbase_reward, base_reward, total_fees
         );
 
@@ -1187,7 +1190,7 @@ async fn mining_loop(
         let mining_start = std::time::Instant::now();
 
         log::info!(
-            "⛏️  Starting mining task for block {} with difficulty {}...",
+            "[INFO] Starting mining task for block {} with difficulty {}...",
             index_snapshot,
             difficulty
         );
@@ -1252,7 +1255,7 @@ async fn mining_loop(
                 match state.bc.validate_and_insert_block(&block) {
                     Ok(_) => {
                         println!(
-                            "✅ Mined new block index={} hash={}",
+                            "[OK] Mined new block index={} hash={}",
                             block.header.index, block.hash
                         );
 
@@ -1273,7 +1276,7 @@ async fn mining_loop(
                         let block_to_broadcast = block.clone();
 
                         state.blockchain.push(block.clone());
-                        state.enforce_memory_limit(); // 🔒 Security: Enforce memory limit
+                        state.enforce_memory_limit(); // Security: Enforce memory limit
                         // pending already cleared earlier
 
                         // Update P2P manager height
@@ -1288,7 +1291,7 @@ async fn mining_loop(
                             .recently_mined_blocks
                             .retain(|_, &mut timestamp| now - timestamp < 300);
 
-                        println!("✅ Block mined! Broadcasting...");
+                        println!("[OK] Block mined! Broadcasting...");
 
                         // -------------------------
                         // Broadcast mined block
@@ -1302,7 +1305,7 @@ async fn mining_loop(
                         for tx in block.transactions.into_iter().skip(1) {
                             state.pending.push(tx);
                         }
-                        // 🔒 Security: Enforce mempool limits
+                        // Security: Enforce mempool limits
                         state.enforce_mempool_limit();
                     }
                 }
@@ -1312,9 +1315,9 @@ async fn mining_loop(
 
                 // Check if mining was cancelled (not an actual error)
                 if error_msg.contains("cancelled") || error_msg.contains("Mining cancelled") {
-                    info!("⛏️  Mining cancelled (normal)");
+                    info!("[INFO] Mining cancelled (normal)");
                 } else {
-                    eprintln!("⛏️ Mining error: {}", e);
+                    eprintln!("[ERROR] Mining error: {}", e);
                 }
 
                 // Mark mining as inactive and reset hashrate
@@ -1327,7 +1330,7 @@ async fn mining_loop(
                     for tx in snapshot_txs.into_iter() {
                         state.pending.push(tx);
                     }
-                    // 🔒 Security: Enforce mempool limits
+                    // Security: Enforce mempool limits
                     state.enforce_mempool_limit();
                 }
             }
@@ -1342,7 +1345,7 @@ async fn mining_loop(
         // Wait before next cycle, but check shutdown flag frequently for quick response
         for _ in 0..10 {
             if shutdown_flag.load(OtherOrdering::SeqCst) {
-                info!("⛏️  Shutdown detected during sleep, exiting mining loop");
+                info!("[WARN] Shutdown detected during sleep, exiting mining loop");
                 return;
             }
             sleep(Duration::from_secs(1)).await;
@@ -1352,7 +1355,7 @@ async fn mining_loop(
     // server_handle.await.unwrap(); // unreachable because loop is infinite
 }
 
-// Constants for NTC token economics
+// Constants for ASRM token economics
 const HALVING_INTERVAL: u64 = 210_000; // blocks (approx 4 years at ~10 min/block)
 
 fn current_block_reward_snapshot() -> U256 {

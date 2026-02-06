@@ -18,32 +18,32 @@ async fn main() -> std::io::Result<()> {
         .filter_level(log::LevelFilter::Info)
         .init();
 
-    info!("🌐 NetCoin Explorer starting...");
+    info!("Astram Explorer starting...");
 
-    // Explorer 데이터베이스 초기화
+    // Explorer database initialization
     let db_path = "explorer_data";
     let explorer_db = Arc::new(ExplorerDB::new(db_path).expect("Failed to open explorer database"));
 
-    info!("💾 Explorer database initialized at {}", db_path);
+    info!("Explorer database initialized at {}", db_path);
 
-    // 백그라운드에서 Node와 동기화하는 태스크
+    // Background sync with the Node process
     let db_sync = explorer_db.clone();
     tokio::spawn(async move {
         let rpc_client = NodeRpcClient::new("http://127.0.0.1:8333");
 
-        info!("🔄 Starting blockchain indexing...");
+        info!("Starting blockchain indexing...");
 
-        // 초기 동기화
+        // Initial sync
         match sync_blockchain(&db_sync, &rpc_client).await {
             Ok(()) => {
-                info!("✅ Initial blockchain sync completed");
+                info!("Initial blockchain sync completed");
             }
             Err(e) => {
-                error!("❌ Failed to sync blockchain on startup: {}", e);
+                error!("Failed to sync blockchain on startup: {}", e);
             }
         }
 
-        // 이후 10초마다 동기화
+        // Sync every 10 seconds
         let mut sync_interval = interval(Duration::from_secs(10));
 
         loop {
@@ -51,10 +51,10 @@ async fn main() -> std::io::Result<()> {
 
             match sync_blockchain(&db_sync, &rpc_client).await {
                 Ok(()) => {
-                    // 성공 시 로그는 sync_blockchain 내부에서 처리
+                    // Success logging is handled in sync_blockchain
                 }
                 Err(e) => {
-                    error!("❌ Failed to sync blockchain: {}", e);
+                    error!("Failed to sync blockchain: {}", e);
                 }
             }
         }
@@ -64,7 +64,7 @@ async fn main() -> std::io::Result<()> {
     let server_port = 8080;
 
     info!(
-        "📡 Server listening on http://{}:{}",
+        "Server listening on http://{}:{}",
         server_address, server_port
     );
 
@@ -108,23 +108,23 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-/// 노드로부터 블록체인 데이터를 가져와 데이터베이스에 인덱싱
+/// Fetch blockchain data from the node and index into the database
 async fn sync_blockchain(db: &ExplorerDB, rpc_client: &NodeRpcClient) -> anyhow::Result<()> {
-    // 마지막 동기화된 높이 가져오기
+    // Load last synced height
     let last_synced = db.get_last_synced_height()?;
 
     let mut utxo_map = std::collections::HashMap::new();
     let (blocks, transactions) = if last_synced == 0 {
-        // 첫 동기화: 전체 블록체인 가져오기
-        log::info!("🔄 Initial sync: fetching entire blockchain from Node");
+        // Full sync: fetch entire blockchain
+        log::info!("Initial sync: fetching entire blockchain from Node");
         rpc_client
             .fetch_blockchain_with_transactions(&mut utxo_map)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to fetch blockchain: {}", e))?
     } else {
-        // 증분 동기화: 마지막 높이 이후만 가져오기
+        // Incremental sync: fetch blocks after last synced height
         log::info!(
-            "🔄 Incremental sync from height {} (last synced: {})",
+            "Incremental sync from height {} (last synced: {})",
             last_synced + 1,
             last_synced
         );
@@ -135,13 +135,13 @@ async fn sync_blockchain(db: &ExplorerDB, rpc_client: &NodeRpcClient) -> anyhow:
     };
 
     if blocks.is_empty() {
-        log::debug!("✅ No new blocks to sync");
+        log::debug!("No new blocks to sync");
         return Ok(());
     }
 
     let latest_height = blocks.iter().map(|b| b.height).max().unwrap_or(last_synced);
 
-    // 모든 블록 인덱싱
+    // Index all blocks
     let mut new_blocks = 0;
     let mut new_transactions = 0;
 
@@ -154,7 +154,7 @@ async fn sync_blockchain(db: &ExplorerDB, rpc_client: &NodeRpcClient) -> anyhow:
         db.save_transaction(tx)?;
         new_transactions += 1;
 
-        // 관련 주소 정보 업데이트
+        // Update address info for involved addresses
         if let Err(e) = db.update_address_info(&tx.from) {
             error!("Failed to update address info for {}: {}", tx.from, e);
         }
@@ -163,14 +163,14 @@ async fn sync_blockchain(db: &ExplorerDB, rpc_client: &NodeRpcClient) -> anyhow:
         }
     }
 
-    // 메타데이터 업데이트
+    // Update metadata
     db.set_block_count(latest_height)?;
-    db.set_transaction_count(latest_height)?; // 각 블록당 1 tx (coinbase)
+    db.set_transaction_count(latest_height)?; // Each block has 1 tx (coinbase)
     db.set_last_synced_height(latest_height)?;
 
     if new_blocks > 0 || new_transactions > 0 {
         info!(
-            "📊 Indexed {} new blocks, {} new transactions (Height: {} -> {}, Total: {} blocks, {} txs)",
+            "Indexed {} new blocks, {} new transactions (Height: {} -> {}, Total: {} blocks, {} txs)",
             new_blocks, new_transactions, last_synced, latest_height, latest_height, latest_height
         );
     }

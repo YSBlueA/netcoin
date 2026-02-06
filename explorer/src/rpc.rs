@@ -1,9 +1,9 @@
 use crate::state::{BlockInfo, TransactionInfo};
+use Astram_core::block::Block;
+use Astram_core::transaction::BINCODE_CONFIG;
 use base64::Engine as _;
 use chrono::Utc;
 use log::{error, info};
-use netcoin_core::block::Block;
-use netcoin_core::transaction::BINCODE_CONFIG;
 use primitive_types::U256;
 use reqwest;
 
@@ -76,11 +76,11 @@ impl NodeRpcClient {
         address: &str,
     ) -> Result<(U256, U256, U256, usize), String> {
         let url = format!("{}/address/{}/info", self.node_url, address);
-        log::info!("🌐 Fetching from Node: {}", url);
+        log::info!("Fetching from Node: {}", url);
         match reqwest::get(&url).await {
             Ok(resp) => match resp.json::<serde_json::Value>().await {
                 Ok(v) => {
-                    log::info!("📥 Raw JSON from Node: {}", v);
+                    log::info!("Raw JSON from Node: {}", v);
 
                     // Parse U256 values from JSON (hex or decimal)
                     let balance = v
@@ -110,7 +110,7 @@ impl NodeRpcClient {
                         .unwrap_or(0) as usize;
 
                     log::info!(
-                        "✅ Parsed - balance: {}, received: {}, sent: {}, tx_count: {}",
+                        "Parsed - balance: {}, received: {}, sent: {}, tx_count: {}",
                         balance,
                         received,
                         sent,
@@ -125,7 +125,7 @@ impl NodeRpcClient {
         }
     }
 
-    /// Node의 /blockchain/db 엔드포인트에서 실제 블록체인 데이터 조회 (DB에서 직접)
+    /// Query blockchain data from Node /blockchain/db (direct DB)
     pub async fn fetch_blocks(&self) -> Result<Vec<BlockInfo>, String> {
         let url = format!("{}/blockchain/db", self.node_url);
 
@@ -133,13 +133,13 @@ impl NodeRpcClient {
             Ok(response) => {
                 match response.json::<serde_json::Value>().await {
                     Ok(data) => {
-                        // Node에서 base64로 인코딩된 bincode 데이터 획득
+                        // Decode base64-encoded bincode from Node
                         if let Some(encoded_blockchain) =
                             data.get("blockchain").and_then(|v| v.as_str())
                         {
                             match self.decode_blockchain(encoded_blockchain) {
                                 Ok((blocks, _)) => {
-                                    info!("✅ Fetched {} blocks from Node", blocks.len());
+                                    info!("Fetched {} blocks from Node", blocks.len());
                                     Ok(blocks)
                                 }
                                 Err(e) => {
@@ -168,7 +168,7 @@ impl NodeRpcClient {
         }
     }
 
-    /// 특정 높이 범위의 블록 조회
+    /// Fetch blocks in a specific height range
     pub async fn fetch_blocks_range(
         &self,
         from_height: u64,
@@ -187,7 +187,7 @@ impl NodeRpcClient {
                                 let transactions =
                                     self.extract_transactions(&raw_blocks, existing_utxo_map);
                                 info!(
-                                    "✅ Fetched {} blocks (from height {}) and {} transactions from Node",
+                                    "Fetched {} blocks (from height {}) and {} transactions from Node",
                                     blocks.len(),
                                     from_height,
                                     transactions.len()
@@ -200,7 +200,7 @@ impl NodeRpcClient {
                             }
                         }
                     } else {
-                        // 데이터가 없으면 빈 결과 반환 (정상)
+                        // No data: return empty result (normal)
                         Ok((vec![], vec![]))
                     }
                 }
@@ -219,38 +219,38 @@ impl NodeRpcClient {
         }
     }
 
-    /// 블록체인 전체 조회 (DB에서 직접, 블록 + 트랜잭션)
+    /// Fetch full blockchain (direct DB, blocks + transactions)
     pub async fn fetch_blockchain_with_transactions(
         &self,
         existing_utxo_map: &mut std::collections::HashMap<(String, u32), primitive_types::U256>,
     ) -> Result<(Vec<BlockInfo>, Vec<TransactionInfo>), String> {
         let url = format!("{}/blockchain/db", self.node_url);
 
-        info!("🔗 Fetching blockchain from: {}", url);
+        info!("Fetching blockchain from: {}", url);
 
         match reqwest::get(&url).await {
             Ok(response) => {
                 let status = response.status();
-                info!("📡 Node response status: {}", status);
+                info!("Node response status: {}", status);
 
                 match response.json::<serde_json::Value>().await {
                     Ok(data) => {
-                        info!("📦 Response data: {:?}", data);
+                        info!("Response data: {:?}", data);
 
                         if let Some(count) = data.get("count").and_then(|v| v.as_u64()) {
-                            info!("📊 Node reports {} blocks", count);
+                            info!("Node reports {} blocks", count);
                         }
 
                         if let Some(encoded_blockchain) =
                             data.get("blockchain").and_then(|v| v.as_str())
                         {
                             info!(
-                                "✅ Found blockchain data (encoded length: {})",
+                                "Found blockchain data (encoded length: {})",
                                 encoded_blockchain.len()
                             );
 
                             if encoded_blockchain.is_empty() {
-                                info!("⚠️ Blockchain data is empty");
+                                info!("Blockchain data is empty");
                                 return Ok((vec![], vec![]));
                             }
 
@@ -259,7 +259,7 @@ impl NodeRpcClient {
                                     let transactions =
                                         self.extract_transactions(&raw_blocks, existing_utxo_map);
                                     info!(
-                                        "✅ Fetched {} blocks and {} transactions from Node",
+                                        "Fetched {} blocks and {} transactions from Node",
                                         blocks.len(),
                                         transactions.len()
                                     );
@@ -271,7 +271,7 @@ impl NodeRpcClient {
                                 }
                             }
                         } else {
-                            error!("❌ No 'blockchain' field in response");
+                            error!("No 'blockchain' field in response");
                             Err("No blockchain data in response".to_string())
                         }
                     }
@@ -291,26 +291,26 @@ impl NodeRpcClient {
         }
     }
 
-    /// Base64-encoded bincode 데이터 디코딩
+    /// Decode base64-encoded bincode payload
     fn decode_blockchain(&self, encoded: &str) -> Result<(Vec<BlockInfo>, Vec<Block>), String> {
-        // Base64 디코딩
+        // Base64 decode
         let decoded_bytes = base64::engine::general_purpose::STANDARD
             .decode(encoded)
             .map_err(|e| format!("Base64 decode error: {}", e))?;
 
-        // Bincode 디코딩
+        // Bincode decode
         let blocks: Vec<Block> = bincode::decode_from_slice(&decoded_bytes, *BINCODE_CONFIG)
             .map(|(blocks, _)| blocks)
             .map_err(|e| format!("Bincode decode error: {}", e))?;
 
-        // Block을 BlockInfo로 변환
+        // Convert Block to BlockInfo
         let block_infos: Vec<BlockInfo> = blocks
             .iter()
             .map(|block| {
                 let timestamp = chrono::DateTime::<Utc>::from_timestamp(block.header.timestamp, 0)
                     .unwrap_or_else(|| Utc::now());
 
-                // Coinbase 트랜잭션(첫 번째)에서 miner 주소 추출
+                // Coinbase transaction (first) -> extract miner address
                 let miner = block
                     .transactions
                     .first()
@@ -335,8 +335,8 @@ impl NodeRpcClient {
         Ok((block_infos, blocks))
     }
 
-    /// 트랜잭션 정보 조회 (블록에서 추출)
-    /// UTXO 상태를 추적하여 정확한 수수료 계산
+    /// Extract transaction info from blocks
+    /// Track UTXO state to calculate accurate fees
     pub fn extract_transactions(
         &self,
         blocks: &[Block],
@@ -344,12 +344,12 @@ impl NodeRpcClient {
     ) -> Vec<TransactionInfo> {
         let mut transactions = Vec::new();
 
-        // 블록을 높이 순으로 정렬 (매우 중요!)
+        // Sort by height (important)
         let mut sorted_blocks = blocks.to_vec();
         sorted_blocks.sort_by_key(|b| b.header.index);
 
         log::info!(
-            "🔍 Processing {} blocks in order for UTXO tracking (existing UTXO map: {} entries)",
+            "Processing {} blocks in order for UTXO tracking (existing UTXO map: {} entries)",
             sorted_blocks.len(),
             existing_utxo_map.len()
         );
@@ -361,9 +361,9 @@ impl NodeRpcClient {
             for tx in &block.transactions {
                 let is_coinbase = tx.inputs.is_empty();
 
-                // Coinbase 트랜잭션: 보상
+                // Coinbase transaction: reward
                 if is_coinbase {
-                    // 보상 트랜잭션: 모든 output의 합계로 하나의 트랜잭션 생성
+                    // Reward tx: sum all outputs as total amount
                     let total_amount = tx
                         .outputs
                         .iter()
@@ -375,8 +375,8 @@ impl NodeRpcClient {
                     };
 
                     transactions.push(TransactionInfo {
-                        hash: tx.eth_hash.clone(), // EVM hash 사용
-                        txid: tx.txid.clone(),     // UTXO txid 유지
+                        hash: tx.eth_hash.clone(), // EVM hash
+                        txid: tx.txid.clone(),     // UTXO txid
                         from: "Block_Reward".to_string(),
                         to: to_address,
                         amount: total_amount,
@@ -388,27 +388,27 @@ impl NodeRpcClient {
                         confirmations: Some(0), // Will be calculated when queried
                     });
 
-                    // Coinbase outputs를 UTXO 맵에 추가
+                    // Insert coinbase outputs into UTXO map
                     for (vout, output) in tx.outputs.iter().enumerate() {
                         existing_utxo_map.insert((tx.txid.clone(), vout as u32), output.amount());
                     }
                 } else {
-                    // 일반 트랜잭션: input 합계와 output 합계로 수수료 계산
+                    // Standard tx: compute input/output sums and fee
                     let from_pubkey = tx
                         .inputs
                         .first()
                         .map(|i| i.pubkey.clone())
                         .unwrap_or_else(|| "Unknown".to_string());
 
-                    // pubkey를 주소로 변환 (거스름돈 비교를 위해)
+                    // Convert pubkey to address (for change exclusion)
                     let from_address = if from_pubkey != "Unknown" {
-                        netcoin_core::crypto::eth_address_from_pubkey_hex(&from_pubkey)
+                        Astram_core::crypto::eth_address_from_pubkey_hex(&from_pubkey)
                             .unwrap_or_else(|_| from_pubkey.clone())
                     } else {
                         from_pubkey.clone()
                     };
 
-                    // Input 총액 계산 (UTXO 맵에서 조회)
+                    // Sum inputs (lookup from UTXO map)
                     let mut input_sum = U256::zero();
                     let mut missing_inputs = 0;
                     for (idx, input) in tx.inputs.iter().enumerate() {
@@ -418,10 +418,10 @@ impl NodeRpcClient {
                             input_sum += *amount;
                         } else {
                             missing_inputs += 1;
-                            // 처음 3개와 마지막 1개만 상세 로그
+                            // Log details for first 3 and last missing inputs
                             if idx < 3 || idx == tx.inputs.len() - 1 {
                                 log::warn!(
-                                    "⚠️ UTXO not found: {}:{} (input #{} of {})",
+                                    "UTXO not found: {}:{} (input #{} of {})",
                                     &input.txid[..8],
                                     input.vout,
                                     idx + 1,
@@ -431,10 +431,10 @@ impl NodeRpcClient {
                         }
                     }
 
-                    // 요약 로그
+                    // Summary log
                     if missing_inputs > 0 {
                         log::warn!(
-                            "⚠️ TX {}: Missing {}/{} inputs, UTXO map size: {}",
+                            "TX {}: Missing {}/{} inputs, UTXO map size: {}",
                             &tx.txid[..8],
                             missing_inputs,
                             tx.inputs.len(),
@@ -442,33 +442,33 @@ impl NodeRpcClient {
                         );
                     }
 
-                    // Output 총액 계산
+                    // Sum outputs
                     let output_sum = tx
                         .outputs
                         .iter()
                         .fold(U256::zero(), |acc, out| acc + out.amount());
 
-                    // 수수료 = Input 총액 - Output 총액
+                    // Fee = input sum - output sum
                     let fee = if input_sum >= output_sum {
                         input_sum - output_sum
                     } else {
-                        // Input을 찾지 못한 경우, 실제 트랜잭션 크기로 수수료 계산
+                        // Missing inputs: estimate fee by tx size
                         if missing_inputs > 0 {
-                            // 트랜잭션을 serialize해서 실제 크기 측정
+                            // Measure actual size by serialization
                             let tx_size = bincode::encode_to_vec(
                                 tx,
-                                netcoin_core::blockchain::BINCODE_CONFIG.clone(),
+                                Astram_core::blockchain::BINCODE_CONFIG.clone(),
                             )
                             .map(|bytes| bytes.len())
-                            .unwrap_or(300); // 기본값 300 bytes
+                            .unwrap_or(300); // default 300 bytes
 
-                            // NetCoin 수수료 정책: BASE_MIN_FEE + (size × MIN_RELAY_FEE_NAT_PER_BYTE)
+                            // Astram fee policy: BASE_MIN_FEE + (size × MIN_RELAY_FEE_NAT_PER_BYTE)
                             // 100 Twei + (size × 200 Gwei)
                             let calculated_fee = U256::from(100_000_000_000_000u64)
                                 + U256::from(tx_size as u64) * U256::from(200_000_000_000u64);
 
                             log::warn!(
-                                "⚠️ TX {}: Estimated fee from size: {} bytes = {} natoshi ({} Twei)",
+                                "TX {}: Estimated fee from size: {} bytes = {} natoshi ({} Twei)",
                                 &tx.txid[..8],
                                 tx_size,
                                 calculated_fee,
@@ -481,20 +481,20 @@ impl NodeRpcClient {
                         }
                     };
 
-                    // 거스름돈 제외한 실제 전송 금액 계산
-                    // 보내는 사람(주소)과 다른 주소로 가는 output만 실제 전송으로 간주
+                    // Exclude change outputs to compute actual transfer amount
+                    // Outputs to different addresses are treated as transfers
                     let mut actual_transfer_amount = U256::zero();
                     let mut recipient_addresses = Vec::new();
 
                     for output in &tx.outputs {
-                        // 받는 주소가 보내는 주소와 다른 경우만 카운트 (거스름돈 제외)
+                        // Count outputs to other addresses only (exclude change)
                         if output.to != from_address {
                             actual_transfer_amount += output.amount();
                             recipient_addresses.push(output.to.clone());
                         }
                     }
 
-                    // 만약 모든 output이 같은 주소면 (셀프 전송), output_sum 사용
+                    // If all outputs are to the sender, use total output sum
                     let amount = if recipient_addresses.is_empty() {
                         output_sum
                     } else {
@@ -504,7 +504,7 @@ impl NodeRpcClient {
                     let total = if input_sum > U256::zero() {
                         input_sum
                     } else {
-                        // Input 합계를 알 수 없는 경우, output + 추정 수수료
+                        // Missing input sums: output + estimated fee
                         output_sum + fee
                     };
 
@@ -519,7 +519,7 @@ impl NodeRpcClient {
                     };
 
                     log::info!(
-                        "💰 TX {}: from_addr={}, outputs={}, actual_transfer={}, change_excluded={}, fee={}",
+                        "TX {}: from_addr={}, outputs={}, actual_transfer={}, change_excluded={}, fee={}",
                         &tx.txid[..8],
                         &from_address[..10],
                         output_sum,
@@ -529,8 +529,8 @@ impl NodeRpcClient {
                     );
 
                     transactions.push(TransactionInfo {
-                        hash: tx.eth_hash.clone(), // EVM hash 사용
-                        txid: tx.txid.clone(),     // UTXO txid 유지
+                        hash: tx.eth_hash.clone(), // EVM hash
+                        txid: tx.txid.clone(),     // UTXO txid
                         from: from_address,
                         to: to_address,
                         amount,
@@ -542,12 +542,12 @@ impl NodeRpcClient {
                         confirmations: Some(0), // Will be calculated when queried
                     });
 
-                    // 사용된 inputs를 UTXO 맵에서 제거
+                    // Remove spent inputs from UTXO map
                     for input in &tx.inputs {
                         existing_utxo_map.remove(&(input.txid.clone(), input.vout));
                     }
 
-                    // 새로운 outputs를 UTXO 맵에 추가
+                    // Add new outputs to UTXO map
                     for (vout, output) in tx.outputs.iter().enumerate() {
                         existing_utxo_map.insert((tx.txid.clone(), vout as u32), output.amount());
                     }
@@ -556,7 +556,7 @@ impl NodeRpcClient {
         }
 
         log::info!(
-            "✅ Processed {} transactions, UTXO map contains {} entries",
+            "Processed {} transactions, UTXO map contains {} entries",
             transactions.len(),
             existing_utxo_map.len()
         );
@@ -564,7 +564,7 @@ impl NodeRpcClient {
         transactions
     }
 
-    /// Resolve Ethereum transaction hash to NetCoin txid
+    /// Resolve Ethereum transaction hash to Astram txid
     pub async fn resolve_eth_hash(&self, eth_hash: &str) -> Result<String, String> {
         let url = format!("{}/eth_mapping/{}", self.node_url, eth_hash);
 
@@ -573,7 +573,7 @@ impl NodeRpcClient {
                 Ok(v) => {
                     if let Some(found) = v.get("found").and_then(|f| f.as_bool()) {
                         if found {
-                            if let Some(txid) = v.get("netcoin_txid").and_then(|t| t.as_str()) {
+                            if let Some(txid) = v.get("Astram_txid").and_then(|t| t.as_str()) {
                                 return Ok(txid.to_string());
                             }
                         }

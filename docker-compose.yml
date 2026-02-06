@@ -2,17 +2,17 @@ version: "3"
 services:
   node:
     build: ./node
-    container_name: netcoin-node
+    container_name: Astram-node
     ports:
       - "26657:26657"
       - "8545:8545"
     volumes:
       - ./data:/data
-    command: ["./netcoind"]
+    command: ["./Astramd"]
 
   explorer:
     build: ./explorer
-    container_name: netcoin-explorer
+    container_name: Astram-explorer
     ports:
       - "3000:3000"
     depends_on:
@@ -20,8 +20,9 @@ services:
 
   wallet:
     build: ./wallet-web
-    container_name: netcoin-wallet
+    container_name: Astram-wallet
     ports:
       - "5173:5173"
     depends_on:
       - node
+

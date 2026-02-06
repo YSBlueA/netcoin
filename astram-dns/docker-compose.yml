@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  netcoin-dns:
+  Astram-dns:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: netcoin-dns
+    container_name: Astram-dns
     ports:
       - "8053:8053"
     environment:
@@ -18,3 +18,4 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+

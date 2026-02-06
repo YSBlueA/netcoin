@@ -1,11 +1,11 @@
 #!/bin/bash
-# 도메인 설정 및 SSL 인증서 자동 설정 스크립트
+# ?�메???�정 �?SSL ?�증???�동 ?�정 ?�크립트
 
 set -e
 
 if [ $# -lt 1 ]; then
     echo "Usage: $0 <domain_name> [email]"
-    echo "Example: $0 dns.netcoin.com admin@netcoin.com"
+    echo "Example: $0 dns.Astram.com admin@Astram.com"
     exit 1
 fi
 
@@ -14,23 +14,23 @@ EMAIL=${2:-""}
 
 echo "=== Setting up domain: $DOMAIN ==="
 
-# Nginx 설치 확인
+# Nginx ?�치 ?�인
 if ! command -v nginx &> /dev/null; then
     echo "Installing nginx..."
     sudo apt update
     sudo apt install -y nginx
 fi
 
-# Certbot 설치 확인
+# Certbot ?�치 ?�인
 if ! command -v certbot &> /dev/null; then
     echo "Installing certbot..."
     sudo apt update
     sudo apt install -y certbot python3-certbot-nginx
 fi
 
-# Nginx 설정 파일 생성 (임시 - SSL 인증서 발급 전)
+# Nginx ?�정 ?�일 ?�성 (?�시 - SSL ?�증??발급 ??
 echo "Creating temporary nginx configuration..."
-sudo tee /etc/nginx/sites-available/netcoin-dns > /dev/null <<EOF
+sudo tee /etc/nginx/sites-available/Astram-dns > /dev/null <<EOF
 server {
     listen 80;
     server_name $DOMAIN;
@@ -48,15 +48,14 @@ server {
 }
 EOF
 
-# 심볼릭 링크 생성
-sudo ln -sf /etc/nginx/sites-available/netcoin-dns /etc/nginx/sites-enabled/
+# ?�볼�?링크 ?�성
+sudo ln -sf /etc/nginx/sites-available/Astram-dns /etc/nginx/sites-enabled/
 
-# Nginx 설정 테스트 및 재시작
-echo "Testing nginx configuration..."
+# Nginx ?�정 ?�스??�??�시??echo "Testing nginx configuration..."
 sudo nginx -t
 sudo systemctl restart nginx
 
-# SSL 인증서 발급
+# SSL ?�증??발급
 echo "Obtaining SSL certificate..."
 if [ -n "$EMAIL" ]; then
     sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email $EMAIL
@@ -64,9 +63,9 @@ else
     sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email
 fi
 
-# 최종 Nginx 설정 파일로 교체
+# 최종 Nginx ?�정 ?�일�?교체
 echo "Updating nginx configuration with SSL..."
-sudo tee /etc/nginx/sites-available/netcoin-dns > /dev/null <<EOF
+sudo tee /etc/nginx/sites-available/Astram-dns > /dev/null <<EOF
 server {
     listen 80;
     server_name $DOMAIN;
@@ -96,11 +95,10 @@ server {
 }
 EOF
 
-# Nginx 재시작
-sudo nginx -t
+# Nginx ?�시??sudo nginx -t
 sudo systemctl restart nginx
 
-# 방화벽 설정
+# 방화�??�정
 if command -v ufw &> /dev/null; then
     echo "Configuring firewall..."
     sudo ufw allow 'Nginx Full'
@@ -120,3 +118,4 @@ echo "  ./register-node.sh 192.168.1.100 8333"
 echo ""
 echo "SSL certificate will auto-renew via certbot."
 echo "Check renewal: sudo certbot renew --dry-run"
+

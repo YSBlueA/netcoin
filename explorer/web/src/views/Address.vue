@@ -11,19 +11,19 @@
         <div class="detail-item highlight">
           <span class="label">Balance</span>
           <span class="value balance"
-            >{{ formatAmount(addressInfo.balance) }} NTC</span
+            >{{ formatAmount(addressInfo.balance) }} ASRM</span
           >
         </div>
         <div class="detail-item">
           <span class="label">Total Received</span>
           <span class="value received"
-            >{{ formatAmount(addressInfo.received) }} NTC</span
+            >{{ formatAmount(addressInfo.received) }} ASRM</span
           >
         </div>
         <div class="detail-item">
           <span class="label">Total Sent</span>
           <span class="value sent"
-            >{{ formatAmount(addressInfo.sent) }} NTC</span
+            >{{ formatAmount(addressInfo.sent) }} ASRM</span
           >
         </div>
         <div class="detail-item">
@@ -101,11 +101,11 @@ export default {
         num = BigInt(value || 0);
       }
 
-      // Convert to NTC using BigInt division
+      // Convert to ASRM using BigInt division
       const divisor = BigInt("1000000000000000000"); // 10^18
-      const ntc = Number(num) / Number(divisor);
+      const ASRM = Number(num) / Number(divisor);
 
-      return ntc.toLocaleString("en-US", {
+      return ASRM.toLocaleString("en-US", {
         minimumFractionDigits: 0,
         maximumFractionDigits: 18,
       });
@@ -221,3 +221,4 @@ h1 {
   color: #999;
 }
 </style>
+

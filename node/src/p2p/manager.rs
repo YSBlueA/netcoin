@@ -7,8 +7,8 @@ use futures::StreamExt;
 use futures::future;
 use hex;
 use log::{info, warn};
-use netcoin_core::block;
-use netcoin_core::transaction::Transaction;
+use Astram_core::block;
+use Astram_core::transaction::Transaction;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -27,16 +27,16 @@ pub struct SavedPeer {
 pub const MAX_OUTBOUND: usize = 8;
 pub const PEERS_FILE: &str = "peers.json";
 pub const PROTOCOL_VERSION: u32 = 1;
-pub const NETWORK_ID: &str = "netcoin-mainnet";
+pub const NETWORK_ID: &str = "Astram-mainnet";
 pub const CHAIN_ID: u64 = 1;
 
-// 🔒 Security: Network-level protection constants
+// Security: Network-level protection constants
 pub const MAX_PEERS_PER_IP: usize = 3; // Maximum connections from same IP
 pub const HANDSHAKE_TIMEOUT_SECS: u64 = 30; // Handshake must complete within 30s
 pub const MAX_INV_PER_MESSAGE: usize = 50000; // Maximum inventory items per message
 pub const BLOCK_ANNOUNCE_RATE_LIMIT: u64 = 10; // Max block announcements per minute per peer
 
-// 🔒 Security: Peer diversity for Eclipse attack protection
+// Security: Peer diversity for Eclipse attack protection
 pub const MAX_PEERS_PER_SUBNET_24: usize = 2; // Max peers from same /24 subnet
 pub const MAX_PEERS_PER_SUBNET_16: usize = 4; // Max peers from same /16 subnet
 pub const MIN_OUTBOUND_SUBNET_DIVERSITY: usize = 3; // Require connections to at least 3 different /16 subnets
@@ -133,7 +133,7 @@ impl PeerManager {
         self.peer_handshakes.lock().clone()
     }
 
-    /// 🔒 Security: Extract subnet prefixes from IP address for diversity checking
+    /// Security: Extract subnet prefixes from IP address for diversity checking
     fn get_subnet_prefixes(ip: &str) -> Option<(String, String)> {
         let parts: Vec<&str> = ip.split('.').collect();
         if parts.len() >= 3 {
@@ -145,7 +145,7 @@ impl PeerManager {
         }
     }
 
-    /// 🔒 Security: Check if adding a peer from this IP would violate subnet diversity rules
+    /// Security: Check if adding a peer from this IP would violate subnet diversity rules
     /// Returns (allowed, reason) - protects against Eclipse attacks
     fn check_subnet_diversity(&self, ip: &str) -> (bool, Option<String>) {
         let (subnet_24, subnet_16) = match Self::get_subnet_prefixes(ip) {
@@ -194,7 +194,7 @@ impl PeerManager {
         (true, None)
     }
 
-    /// 🔒 Security: Get current subnet diversity metrics
+    /// Security: Get current subnet diversity metrics
     pub fn get_subnet_diversity_stats(&self) -> (usize, usize) {
         use std::collections::HashSet;
 
@@ -242,7 +242,7 @@ impl PeerManager {
         stream: TcpStream,
         peer_id: PeerId,
     ) -> anyhow::Result<()> {
-        // 🔒 Security: Extract IP address and check connection limit
+        // Security: Extract IP address and check connection limit
         let peer_ip = peer_id.split(':').next().unwrap_or("").to_string();
 
         // Check if this IP already has too many connections
@@ -255,17 +255,17 @@ impl PeerManager {
 
         if peer_count >= MAX_PEERS_PER_IP {
             warn!(
-                "🚫 Rejecting connection from {} - IP {} already has {} connections (max: {})",
+                "[WARN] Rejecting connection from {} - IP {} already has {} connections (max: {})",
                 peer_id, peer_ip, peer_count, MAX_PEERS_PER_IP
             );
             return Ok(()); // Silently drop connection
         }
 
-        // 🔒 Security: Check subnet diversity to prevent Eclipse attacks
+        // Security: Check subnet diversity to prevent Eclipse attacks
         let (diversity_ok, diversity_reason) = self.check_subnet_diversity(&peer_ip);
         if !diversity_ok {
             warn!(
-                "🚫 Rejecting connection from {} - subnet diversity violation: {}",
+                "[WARN] Rejecting connection from {} - subnet diversity violation: {}",
                 peer_id,
                 diversity_reason.unwrap_or_else(|| "Unknown".to_string())
             );
@@ -274,7 +274,7 @@ impl PeerManager {
 
         let (subnet_24_count, subnet_16_count) = self.get_subnet_diversity_stats();
         info!(
-            "✅ Accepting connection from {} ({} existing from IP, diversity: {}/24 subnets, {}/16 subnets)",
+            "[INFO] Accepting connection from {} ({} existing from IP, diversity: {}/24 subnets, {}/16 subnets)",
             peer_id, peer_count, subnet_24_count, subnet_16_count
         );
 
@@ -312,7 +312,7 @@ impl PeerManager {
         // register sender in the manager so other parts can send to this peer
         self.peers.lock().insert(peer_id_clone.clone(), tx.clone());
 
-        // 🔒 Security: Track IP address for connection limiting
+        // Security: Track IP address for connection limiting
         let peer_ip = peer_id_clone.split(':').next().unwrap_or("").to_string();
         self.peer_ips
             .lock()
@@ -431,7 +431,7 @@ impl PeerManager {
                 }
                 self.peers.lock().remove(&peer_id_clone2);
 
-                // 🔒 Security: Remove from IP tracking
+                // Security: Remove from IP tracking
                 let peer_ip = peer_id_clone2.split(':').next().unwrap_or("").to_string();
                 if let Some(peer_list) = self.peer_ips.lock().get_mut(&peer_ip) {
                     peer_list.retain(|id| id != &peer_id_clone2);
@@ -449,7 +449,7 @@ impl PeerManager {
                 }
                 self.peers.lock().remove(&peer_id_clone2);
 
-                // 🔒 Security: Remove from IP tracking
+                // Security: Remove from IP tracking
                 let peer_ip = peer_id_clone2.split(':').next().unwrap_or("").to_string();
                 if let Some(peer_list) = self.peer_ips.lock().get_mut(&peer_ip) {
                     peer_list.retain(|id| id != &peer_id_clone2);
@@ -506,7 +506,7 @@ impl PeerManager {
                 let my_port = self.get_my_listening_port();
                 if info.listening_port == my_port {
                     warn!(
-                        "🔁 Detected self-connection to {} (same listening port: {}), disconnecting",
+                        "Detected self-connection to {} (same listening port: {}), disconnecting",
                         peer_id, my_port
                     );
                     // Remove from peers map to disconnect
@@ -566,7 +566,7 @@ impl PeerManager {
                 let my_port = self.get_my_listening_port();
                 if info.listening_port == my_port {
                     warn!(
-                        "🔁 Detected self-connection in HandshakeAck from {} (same listening port: {}), disconnecting",
+                        "Detected self-connection in HandshakeAck from {} (same listening port: {}), disconnecting",
                         peer_id, my_port
                     );
                     // Remove from peers map to disconnect
@@ -645,10 +645,10 @@ impl PeerManager {
                 object_type,
                 hashes,
             } => {
-                // 🔒 Security: Validate INV message size to prevent memory exhaustion
+                // Security: Validate INV message size to prevent memory exhaustion
                 if hashes.len() > MAX_INV_PER_MESSAGE {
                     warn!(
-                        "🚨 Peer {} sent excessive INV message: {} items (max: {}), ignoring",
+                        "Peer {} sent excessive INV message: {} items (max: {}), ignoring",
                         peer_id,
                         hashes.len(),
                         MAX_INV_PER_MESSAGE
@@ -669,10 +669,10 @@ impl PeerManager {
                 object_type,
                 hashes,
             } => {
-                // 🔒 Security: Validate GetData message size
+                // Security: Validate GetData message size
                 if hashes.len() > MAX_INV_PER_MESSAGE {
                     warn!(
-                        "🚨 Peer {} sent excessive GetData: {} items (max: {}), ignoring",
+                        "Peer {} sent excessive GetData: {} items (max: {}), ignoring",
                         peer_id,
                         hashes.len(),
                         MAX_INV_PER_MESSAGE
@@ -749,9 +749,9 @@ impl PeerManager {
     pub async fn dns_seed_lookup(&self) -> anyhow::Result<Vec<String>> {
         use tokio::net::lookup_host;
         let seeds = vec![
-            "seed1.netcoin.org:8333",
-            "seed2.netcoin.org:8333",
-            "dnsseed.netcoin.io:8333",
+            "seed1.Astram.org:8333",
+            "seed2.Astram.org:8333",
+            "dnsseed.Astram.io:8333",
         ];
 
         let mut peers = Vec::new();
@@ -938,3 +938,4 @@ struct DnsNodesResponse {
     nodes: Vec<DnsNodeInfo>,
     count: usize,
 }
+

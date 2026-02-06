@@ -1,8 +1,8 @@
-# NetCoin Security Implementation
+# Astram Security Implementation
 
 ## Overview
 
-This document describes the comprehensive security measures implemented in NetCoin to protect against various attack vectors including 51% attacks, timestamp manipulation, deep reorganizations, and network-level DoS attacks.
+This document describes the comprehensive security measures implemented in Astram to protect against various attack vectors including 51% attacks, timestamp manipulation, deep reorganizations, and network-level DoS attacks.
 
 ## 1. Cumulative Work-Based Chain Selection
 
@@ -110,7 +110,7 @@ This document describes the comprehensive security measures implemented in NetCo
 - Automatic eviction of oldest blocks when limit exceeded
 - `enforce_memory_limit()` called after every block insertion
 - Warning logs when approaching/exceeding limit
-- ✅ **Status:** Fully implemented and enforced
+- ??**Status:** Fully implemented and enforced
 
 **Protection Against:**
 
@@ -161,7 +161,7 @@ This document describes the comprehensive security measures implemented in NetCo
 - Reorg protection: `check_reorg_against_checkpoints()` - prevents reorgs below checkpoint
 - Latest checkpoint height tracking for finality determination
 - Human-readable descriptions for each checkpoint
-- ✅ **Status:** Fully implemented with policy separation
+- ??**Status:** Fully implemented with policy separation
 
 **Protection Against:**
 
@@ -187,8 +187,8 @@ Checkpoint {
 
 **Key Distinction:**
 
-- ❌ NOT consensus: Other nodes can accept blocks that violate checkpoints
-- ✅ Policy only: This node will reject chains conflicting with its checkpoints
+- ??NOT consensus: Other nodes can accept blocks that violate checkpoints
+- ??Policy only: This node will reject chains conflicting with its checkpoints
 - Purpose: Provides stability anchor for exchanges/pools without forcing network-wide rules
 
 ## 9. Network-Level Defenses
@@ -210,7 +210,7 @@ Checkpoint {
   - Handshake timeout: 30 seconds (`HANDSHAKE_TIMEOUT_SECS`)
   - Block announce rate: 10 per minute (`BLOCK_ANNOUNCE_RATE_LIMIT`)
 
-- ✅ **Status:** IP limiting and message validation fully implemented
+- ??**Status:** IP limiting and message validation fully implemented
 
 **Protection Against:**
 
@@ -299,20 +299,20 @@ pub const BLOCK_ANNOUNCE_RATE_LIMIT: u64 = 10; // per minute
 
 ## Pending Implementation
 
-### Completed ✅
+### Completed ??
 
 All 10 security features are now fully implemented:
 
-1. ✅ Work calculation overflow protection
-2. ✅ Deep reorg policy separation
-3. ✅ Median-Time-Past timestamp validation
-4. ✅ Difficulty adjustment slow start
-5. ✅ Orphan block cache limits (with eviction)
-6. ✅ Memory block limits (fully enforced)
-7. ✅ Transaction replay protection
-8. ✅ Checkpoint policy system
-9. ✅ Network-level defenses (IP limiting + message validation)
-10. ✅ Explorer protection (confirmation display)
+1. ??Work calculation overflow protection
+2. ??Deep reorg policy separation
+3. ??Median-Time-Past timestamp validation
+4. ??Difficulty adjustment slow start
+5. ??Orphan block cache limits (with eviction)
+6. ??Memory block limits (fully enforced)
+7. ??Transaction replay protection
+8. ??Checkpoint policy system
+9. ??Network-level defenses (IP limiting + message validation)
+10. ??Explorer protection (confirmation display)
 
 ### Future Enhancements
 
@@ -386,7 +386,7 @@ All 10 security features are now fully implemented:
 - [x] Fully implemented and operational
 - [ ] Not implemented
 
-**Status: 13/13 SECURITY FEATURES COMPLETE ✅**
+**Status: 13/13 SECURITY FEATURES COMPLETE ??*
 
 ## 11. Validation Failure Tracking & Statistics
 
@@ -530,7 +530,7 @@ For security issues or vulnerabilities, please contact the development team thro
   - Partial implementation of 2 additional features
   - Explorer confirmation tracking
 
-- **v2.0 (2026-02-05):** Complete security hardening ✅
+- **v2.0 (2026-02-05):** Complete security hardening ??
   - **Memory block limits:** Full enforcement with automatic eviction
   - **Network defenses:** IP-based connection limiting (max 3 per IP)
   - **Network defenses:** INV/GetData message size validation (max 50K items)
@@ -539,7 +539,7 @@ For security issues or vulnerabilities, please contact the development team thro
   - All 10 security features now fully operational
   - Production-ready security posture achieved
 
-- **v2.1 (2025-02-05):** Advanced monitoring and Eclipse protection ✅
+- **v2.1 (2025-02-05):** Advanced monitoring and Eclipse protection ??
   - **Validation failure tracking:** 17 categorized failure reasons with atomic statistics
   - **Mempool DoS protection:** Triple-layer defense (10K count, 300MB size, 24h expiry)
   - **Peer subnet diversity:** /24 and /16 limits prevent Eclipse attacks
@@ -557,4 +557,5 @@ For security issues or vulnerabilities, please contact the development team thro
   - `mempool.max_size` and `mempool.max_bytes`: Mempool limits
   - `network.subnet_diversity`: Unique subnet counts (IPv4 /24 and /16)
 
-  **Status:** 13/13 features complete ✅
+  **Status:** 13/13 features complete ??
+

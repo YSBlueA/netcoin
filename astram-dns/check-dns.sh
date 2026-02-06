@@ -1,11 +1,11 @@
 #!/bin/bash
-# DNS 서버 상태 확인 스크립트
+# DNS ?�버 ?�태 ?�인 ?�크립트
 
-# DNS 서버 주소 (환경 변수 또는 기본값 사용)
-# 사용 예: DNS_SERVER=http://dns.netcoin.com:8053 ./check-dns.sh
+# DNS ?�버 주소 (?�경 변???�는 기본�??�용)
+# ?�용 ?? DNS_SERVER=http://dns.Astram.com:8053 ./check-dns.sh
 DNS_SERVER=${DNS_SERVER:-"http://161.33.19.183:8053"}
 
-echo "=== Netcoin DNS Server Status ==="
+echo "=== Astram DNS Server Status ==="
 echo ""
 
 # Health check
@@ -24,3 +24,4 @@ echo ""
 echo "3. Registered Nodes:"
 curl -s $DNS_SERVER/nodes | jq . 2>/dev/null || curl -s $DNS_SERVER/nodes
 echo ""
+

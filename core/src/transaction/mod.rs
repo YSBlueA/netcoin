@@ -45,8 +45,8 @@ impl TransactionOutput {
 /// Transaction: inputs / outputs / timestamp / txid
 #[derive(Encode, Decode, Debug, Clone)]
 pub struct Transaction {
-    pub txid: String,     // UTXO 내부 추적용 (SHA256 double hash)
-    pub eth_hash: String, // EVM 외부 노출용 (Keccak256, 0x prefix)
+    pub txid: String,     // UTXO transaction tracking (SHA256 double hash)
+    pub eth_hash: String, // EVM transaction hash (Keccak256, 0x prefix)
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub timestamp: i64,
@@ -69,7 +69,7 @@ impl Transaction {
         let inputs_for_hash: Vec<_> = self
             .inputs
             .iter()
-            .map(|i| (i.txid.clone(), i.vout)) // pubkey 제거
+            .map(|i| (i.txid.clone(), i.vout)) // omit pubkey
             .collect();
 
         Ok(bincode::encode_to_vec(
@@ -78,7 +78,7 @@ impl Transaction {
         )?)
     }
 
-    /// UTXO 내부 추적용 txid 계산 (Bitcoin style: SHA256 double hash)
+    /// Calculate txid for UTXO transaction tracking (Bitcoin style: SHA256 double hash)
     pub fn compute_txid(&self) -> Result<String, anyhow::Error> {
         let bytes = self.serialize_for_hash()?;
         let h1 = Sha256::digest(&bytes);
@@ -86,7 +86,7 @@ impl Transaction {
         Ok(hex::encode(h2))
     }
 
-    /// EVM 외부 노출용 hash 계산 (Ethereum style: Keccak256)
+    /// Calculate EVM transaction hash (Ethereum style: Keccak256)
     pub fn compute_eth_hash(&self) -> Result<String, anyhow::Error> {
         use sha3::{Digest as Sha3Digest, Keccak256};
 
@@ -95,7 +95,7 @@ impl Transaction {
         Ok(format!("0x{}", hex::encode(hash)))
     }
 
-    /// txid와 eth_hash 모두 설정 (권장)
+    /// Set both txid and eth_hash (recommended)
     pub fn with_hashes(mut self) -> Self {
         if let Ok(txid) = self.compute_txid() {
             self.txid = txid;
@@ -106,7 +106,7 @@ impl Transaction {
         self
     }
 
-    /// 하위 호환성을 위한 메서드 (deprecated)
+    /// Legacy wrapper method (deprecated)
     #[deprecated(note = "Use with_hashes() instead")]
     pub fn with_txid(self) -> Self {
         self.with_hashes()
@@ -156,7 +156,7 @@ impl Transaction {
                 continue;
             }
 
-            // Standard NetCoin signature verification
+            // Standard Astram signature verification
             let sig_bytes = hex::decode(sig_hex)?;
 
             if !crate::crypto::verify_signature(&inp.pubkey, &tx_bytes, &sig_bytes) {

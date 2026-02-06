@@ -20,11 +20,11 @@ impl Config {
 
         // Use a Windows-friendly folder when building on Windows to avoid tilde expansion issues.
         if cfg!(target_os = "windows") {
-            let base = dirs::data_dir().unwrap_or(home).join("Netcoin");
+            let base = dirs::data_dir().unwrap_or(home).join("Astram");
             return base.join("wallet.json").to_string_lossy().into_owned();
         }
 
-        home.join(".netcoin")
+        home.join(".Astram")
             .join("wallet.json")
             .to_string_lossy()
             .into_owned()
@@ -35,11 +35,11 @@ impl Config {
         let home = dirs::home_dir().expect("Cannot find home directory");
 
         if cfg!(target_os = "windows") {
-            let base = dirs::data_dir().unwrap_or(home).join("Netcoin");
+            let base = dirs::data_dir().unwrap_or(home).join("Astram");
             return base.join("data").to_string_lossy().into_owned();
         }
 
-        home.join(".netcoin")
+        home.join(".Astram")
             .join("data")
             .to_string_lossy()
             .into_owned()
@@ -47,7 +47,7 @@ impl Config {
 
     pub fn default_path() -> PathBuf {
         let home = dirs::home_dir().expect("Cannot find home directory");
-        home.join(".netcoin/config.json")
+        home.join(".Astram/config.json")
     }
 
     /// Wallet path with tilde expansion applied.
@@ -64,7 +64,7 @@ impl Config {
         let path = Self::default_path();
         if !path.exists() {
             println!(
-                "⚠️ Configuration file not found. Creating default configuration.: {:?}",
+                "Configuration file not found. Creating default configuration.: {:?}",
                 path
             );
             let cfg = Self::default();
@@ -90,12 +90,12 @@ impl Config {
             "node_rpc_url" => self.node_rpc_url = value.to_string(),
             "data_dir" => self.data_dir = value.to_string(),
             _ => {
-                println!("❌ Unknown configuration key: {}", key);
+                println!("Unknown configuration key: {}", key);
                 return;
             }
         }
         self.save();
-        println!("✅ {} = {} Set successfully.", key, value);
+        println!("??{} = {} Set successfully.", key, value);
     }
 
     pub fn view(&self) {
@@ -106,7 +106,7 @@ impl Config {
         let cfg = Self::default();
         cfg.save();
         println!(
-            "✅ Default configuration file has been created: {:?}",
+            "Default configuration file has been created: {:?}",
             Self::default_path()
         );
     }

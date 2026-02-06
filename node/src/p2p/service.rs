@@ -3,7 +3,7 @@ use crate::NodeHandle;
 use crate::p2p::manager::{MAX_OUTBOUND, PeerManager};
 use hex;
 use log::{info, warn};
-use netcoin_core::block;
+use Astram_core::block;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::time::{Duration, sleep};
@@ -110,7 +110,7 @@ impl P2PService {
                 for loc_hash in &locator_hashes {
                     if let Ok(hash_hex) = hex::encode(loc_hash).parse::<String>() {
                         if let Some(pos) = chain.iter().position(|h| {
-                            if let Ok(computed) = netcoin_core::block::compute_header_hash(h) {
+                            if let Ok(computed) = Astram_core::block::compute_header_hash(h) {
                                 computed == hash_hex
                             } else {
                                 false
@@ -143,7 +143,7 @@ impl P2PService {
                 // Check if this is a block we recently mined ourselves
                 if state.recently_mined_blocks.contains_key(&block.hash) {
                     info!(
-                        "🔁 Ignoring block we mined ourselves: index={} hash={}",
+                        "[INFO] Ignoring block we mined ourselves: index={} hash={}",
                         block.header.index, block.hash
                     );
                     return;
@@ -158,11 +158,11 @@ impl P2PService {
                 match state.bc.validate_and_insert_block(&block) {
                     Ok(_) => {
                         info!(
-                            "✅ Block added via p2p: index={} hash={}",
+                            "[OK] Block added via p2p: index={} hash={}",
                             block.header.index, block.hash
                         );
                         state.blockchain.push(block.clone());
-                        state.enforce_memory_limit(); // 🔒 Security: Enforce memory limit
+                        state.enforce_memory_limit(); // Security: Enforce memory limit
 
                         // Update P2P manager height
                         state.p2p.set_my_height(block.header.index + 1);
@@ -179,7 +179,7 @@ impl P2PService {
 
                         if removed_count > 0 {
                             info!(
-                                "🗑️  Removed {} transactions from mempool (included in peer block)",
+                                "[INFO] Removed {} transactions from mempool (included in peer block)",
                                 removed_count
                             );
                         }
@@ -187,32 +187,32 @@ impl P2PService {
                         // Check if this block triggers a chain reorganization
                         match state.bc.reorganize_if_needed(&block.hash) {
                             Ok(true) => {
-                                info!("🔄 Chain reorganization completed");
+                                info!("[OK] Chain reorganization completed");
                             }
                             Ok(false) => {
                                 // No reorg needed, current chain is best
                             }
                             Err(e) => {
-                                warn!("⚠️  Reorganization check failed: {:?}", e);
+                                warn!("[WARN] Reorganization check failed: {:?}", e);
                             }
                         }
 
                         // Try to process orphan blocks that may now be valid
                         Self::process_orphan_blocks(&mut state);
 
-                        info!("⛏️  Mining cancelled, restarting with updated chain...");
+                            info!("[INFO] Mining cancelled, restarting with updated chain...");
                     }
                     Err(e) => {
                         // Block validation failed - check if it's an orphan
                         let error_msg = format!("{:?}", e);
                         
                         if error_msg.contains("previous header not found") {
-                            // 🔒 Security: Check orphan pool size limit before adding
+                            // Security: Check orphan pool size limit before adding
                             let now = chrono::Utc::now().timestamp();
                             
                             if state.orphan_blocks.len() >= crate::MAX_ORPHAN_BLOCKS {
                                 warn!(
-                                    "⚠️  Orphan pool full ({} blocks), dropping oldest orphan to accept new one",
+                                    "[WARN] Orphan pool full ({} blocks), dropping oldest orphan to accept new one",
                                     state.orphan_blocks.len()
                                 );
                                 
@@ -235,7 +235,7 @@ impl P2PService {
                             state.orphan_blocks.insert(block.hash.clone(), (block.clone(), now));
                             
                             info!(
-                                "📦 Orphan block received (index={}, hash={}), storing for later (orphan pool size: {})",
+                                "[INFO] Orphan block received (index={}, hash={}), storing for later (orphan pool size: {})",
                                 block.header.index,
                                 &block.hash[..16],
                                 state.orphan_blocks.len()
@@ -244,7 +244,7 @@ impl P2PService {
                             // Request the parent block
                             // TODO: implement getdata request for parent block
                         } else {
-                            warn!("❌ Invalid block from p2p: {:?}", e);
+                            warn!("[WARN] Invalid block from p2p: {:?}", e);
                         }
                     }
                 }
@@ -254,7 +254,7 @@ impl P2PService {
         // transaction handler
         let nh3 = node_handle.clone();
         let p2p_for_tx = p2p.clone();
-        p2p.set_on_tx(move |tx: netcoin_core::transaction::Transaction| {
+        p2p.set_on_tx(move |tx: Astram_core::transaction::Transaction| {
             let nh_async = nh3.clone();
             let p2p_tx_relay = p2p_for_tx.clone();
             tokio::spawn(async move {
@@ -264,7 +264,7 @@ impl P2PService {
 
                     // Check if we've already seen this transaction (prevents loops)
                     if state.seen_tx.contains_key(&tx.txid) {
-                        info!("🔁 Transaction {} already seen, skipping", tx.txid);
+                        info!("[INFO] Transaction {} already seen, skipping", tx.txid);
                         return;
                     }
 
@@ -280,9 +280,9 @@ impl P2PService {
                     // Validate transaction signatures
                     match tx.verify_signatures() {
                         Ok(true) => {
-                            info!("✅ Transaction {} received and validated from p2p", tx.txid);
+                            info!("[OK] Transaction {} received and validated from p2p", tx.txid);
                             
-                            // 🔒 Security: Check for double-spending in mempool
+                            // Security: Check for double-spending in mempool
                             let mut tx_utxos = std::collections::HashSet::new();
                             for inp in &tx.inputs {
                                 tx_utxos.insert(format!("{}:{}", inp.txid, inp.vout));
@@ -295,7 +295,7 @@ impl P2PService {
                                     let pending_utxo = format!("{}:{}", pending_inp.txid, pending_inp.vout);
                                     if tx_utxos.contains(&pending_utxo) {
                                         warn!(
-                                            "🚫 Double-spend detected in P2P TX {}: UTXO {} already used by pending TX {}",
+                                            "[WARN] Double-spend detected in P2P TX {}: UTXO {} already used by pending TX {}",
                                             tx.txid, pending_utxo, pending_tx.txid
                                         );
                                         has_conflict = true;
@@ -322,20 +322,20 @@ impl P2PService {
                                 // Add to mempool
                                 state.pending.push(tx.clone());
                                 
-                                // 🔒 Security: Enforce mempool limits after adding transaction
+                                // Security: Enforce mempool limits after adding transaction
                                 state.enforce_mempool_limit();
                                 
-                                info!("📝 Mempool size: {} transactions", state.pending.len());
+                                info!("[INFO] Mempool size: {} transactions", state.pending.len());
                                 
                                 true // Should relay to other peers
                             }
                         }
                         Ok(false) => {
-                            warn!("❌ Transaction {} has invalid signatures", tx.txid);
+                            warn!("[WARN] Transaction {} has invalid signatures", tx.txid);
                             false
                         }
                         Err(e) => {
-                            warn!("❌ Transaction {} validation error: {:?}", tx.txid, e);
+                            warn!("[WARN] Transaction {} validation error: {:?}", tx.txid, e);
                             false
                         }
                     }
@@ -344,7 +344,7 @@ impl P2PService {
                 // Relay transaction to other peers if validated
                 if should_relay {
                     p2p_tx_relay.broadcast_tx(&tx).await;
-                    info!("📡 Relayed transaction {} to other peers", tx.txid);
+                    info!("[INFO] Relayed transaction {} to other peers", tx.txid);
                 }
             });
         });
@@ -409,11 +409,11 @@ impl P2PService {
                     match state.bc.validate_and_insert_block(&block) {
                         Ok(_) => {
                             info!(
-                                "✅ Orphan block now valid: index={} hash={}",
+                                "[OK] Orphan block now valid: index={} hash={}",
                                 block.header.index, &hash[..16]
                             );
                             state.blockchain.push(block.clone());
-                            state.enforce_memory_limit(); // 🔒 Security: Enforce memory limit
+                            state.enforce_memory_limit(); // Security: Enforce memory limit
                             state.orphan_blocks.remove(&hash);
                             processed_any = true;
 
@@ -433,7 +433,7 @@ impl P2PService {
                         }
                         Err(e) => {
                             warn!(
-                                "⚠️  Orphan block still invalid: index={} hash={}, error: {:?}",
+                                "[WARN] Orphan block still invalid: index={} hash={}, error: {:?}",
                                 block.header.index, &hash[..16], e
                             );
                             // Keep in orphan pool for now
@@ -450,7 +450,7 @@ impl P2PService {
             let age = now - *timestamp;
             if age > one_hour {
                 info!(
-                    "🗑️  Removing old orphan block: index={} hash={} (age: {}s)",
+                    "[INFO] Removing old orphan block: index={} hash={} (age: {}s)",
                     block.header.index,
                     &hash[..16],
                     age
@@ -462,7 +462,7 @@ impl P2PService {
         });
 
         if !state.orphan_blocks.is_empty() {
-            info!("📦 Orphan pool size: {}", state.orphan_blocks.len());
+            info!("Orphan pool size: {}", state.orphan_blocks.len());
         }
     }
 
@@ -485,3 +485,4 @@ impl P2PService {
         });
     }
 }
+

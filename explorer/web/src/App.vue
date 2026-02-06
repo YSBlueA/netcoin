@@ -2,7 +2,7 @@
   <div id="app" class="explorer-container">
     <nav class="navbar">
       <div class="nav-content">
-        <h1 class="logo">⛏️ NetCoin Explorer</h1>
+        <h1 class="logo">Astram Explorer</h1>
         <ul class="nav-links">
           <li><router-link to="/">Home</router-link></li>
           <li><router-link to="/blocks">Blocks</router-link></li>
@@ -16,7 +16,7 @@
     </main>
 
     <footer class="footer">
-      <p>&copy; 2025 NetCoin Explorer - Blockchain made simple</p>
+      <p>&copy; 2025 Astram Explorer - Blockchain made simple</p>
     </footer>
   </div>
 </template>
@@ -121,3 +121,4 @@ body {
   }
 }
 </style>
+

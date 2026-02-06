@@ -1,10 +1,10 @@
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use futures::{SinkExt, StreamExt};
-use netcoin_config::config::Config;
-use netcoin_core::block::{Block, BlockHeader, compute_header_hash, compute_merkle_root};
-use netcoin_core::config::initial_block_reward;
-use netcoin_core::transaction::{BINCODE_CONFIG, Transaction};
+use Astram_config::config::Config;
+use Astram_core::block::{Block, BlockHeader, compute_header_hash, compute_merkle_root};
+use Astram_core::config::initial_block_reward;
+use Astram_core::transaction::{BINCODE_CONFIG, Transaction};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -537,7 +537,7 @@ async fn run_gbt_server(bind_addr: &str, client: NodeClient, pool_address: Strin
                 }
             }
         })
-        .with(warp::log("netcoin::gbt"));
+        .with(warp::log("Astram::gbt"));
 
     let addr: std::net::SocketAddr = bind_addr.parse()?;
     warp::serve(route).run(addr).await;
@@ -591,3 +591,4 @@ async fn main() -> Result<()> {
 
     run_stratum_server(&stratum_bind, client, pool_address).await
 }
+

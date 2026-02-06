@@ -1,10 +1,10 @@
-# NetCoin Release Guide
+# Astram Release Guide
 
-This guide explains how to build and package NetCoin releases for distribution.
+This guide explains how to build and package Astram releases for distribution.
 
 ## Overview
 
-NetCoin supports three platforms:
+Astram supports three platforms:
 
 - **Windows** (x64)
 - **Linux** (x64)
@@ -33,16 +33,16 @@ Each platform requires building on that specific OS (no cross-compilation).
 
 ```powershell
 $version = "0.1.0"  # Update to match Cargo.toml
-Compress-Archive -Path release\windows\* -DestinationPath "netcoin-windows-v$version.zip"
+Compress-Archive -Path release\windows\* -DestinationPath "Astram-windows-v$version.zip"
 ```
 
 **Output:** `release/windows/` containing:
 
-- `netcoin-node.exe`
-- `netcoin-dns.exe`
-- `netcoin-explorer.exe`
+- `Astram-node.exe`
+- `Astram-dns.exe`
+- `Astram-explorer.exe`
 - `wallet-cli.exe`
-- `netcoin.ps1` (launcher)
+- `Astram.ps1` (launcher)
 - `README.md`
 - `VERSION.txt`
 - `config/example.conf`
@@ -66,16 +66,16 @@ chmod +x build-release.sh
 
 ```bash
 VERSION="0.1.0"  # Update to match Cargo.toml
-tar -czf "netcoin-linux-v$VERSION.tar.gz" -C release linux
+tar -czf "Astram-linux-v$VERSION.tar.gz" -C release linux
 ```
 
 **Output:** `release/linux/` containing:
 
-- `netcoin-node`
-- `netcoin-dns`
-- `netcoin-explorer`
+- `Astram-node`
+- `Astram-dns`
+- `Astram-explorer`
 - `wallet-cli`
-- `netcoin.sh` (launcher)
+- `Astram.sh` (launcher)
 - `README.md`
 - `VERSION.txt`
 - `config/example.conf`
@@ -89,43 +89,43 @@ chmod +x build-release.sh
 ./build-release.sh
 
 VERSION="0.1.0"
-tar -czf "netcoin-macos-v$VERSION.tar.gz" -C release macos
+tar -czf "Astram-macos-v$VERSION.tar.gz" -C release macos
 ```
 
 ## Release Structure
 
 ```
 release/
-├── windows/
-│   ├── netcoin.ps1              # Launcher script
-│   ├── netcoin-node.exe
-│   ├── netcoin-dns.exe
-│   ├── netcoin-explorer.exe
-│   ├── wallet-cli.exe
-│   ├── README.md
-│   ├── VERSION.txt
-│   └── config/
-│       └── example.conf
-├── linux/
-│   ├── netcoin.sh               # Launcher script
-│   ├── netcoin-node
-│   ├── netcoin-dns
-│   ├── netcoin-explorer
-│   ├── wallet-cli
-│   ├── README.md
-│   ├── VERSION.txt
-│   └── config/
-│       └── example.conf
-└── macos/
-    ├── netcoin.sh
-    ├── netcoin-node
-    ├── netcoin-dns
-    ├── netcoin-explorer
-    ├── wallet-cli
-    ├── README.md
-    ├── VERSION.txt
-    └── config/
-        └── example.conf
+|-- windows/
+|   |-- Astram.ps1              # Launcher script
+|   |-- Astram-node.exe
+|   |-- Astram-dns.exe
+|   |-- Astram-explorer.exe
+|   |-- wallet-cli.exe
+|   |-- README.md
+|   |-- VERSION.txt
+|   `-- config/
+|       `-- example.conf
+|-- linux/
+|   |-- Astram.sh               # Launcher script
+|   |-- Astram-node
+|   |-- Astram-dns
+|   |-- Astram-explorer
+|   |-- wallet-cli
+|   |-- README.md
+|   |-- VERSION.txt
+|   `-- config/
+|       `-- example.conf
+`-- macos/
+   |-- Astram.sh
+   |-- Astram-node
+   |-- Astram-dns
+   |-- Astram-explorer
+   |-- wallet-cli
+   |-- README.md
+   |-- VERSION.txt
+   `-- config/
+      `-- example.conf
 ```
 
 ## Distribution Workflow
@@ -143,26 +143,26 @@ release/
 
    ```powershell
    .\build-release.ps1
-   Compress-Archive -Path release\windows\* -DestinationPath netcoin-windows-v0.2.0.zip
+   Compress-Archive -Path release\windows\* -DestinationPath Astram-windows-v0.2.0.zip
    ```
 
 3. **Build on Linux machine:**
 
    ```bash
    ./build-release.sh
-   tar -czf netcoin-linux-v0.2.0.tar.gz -C release linux
+   tar -czf Astram-linux-v0.2.0.tar.gz -C release linux
    ```
 
 4. **Build on macOS machine:**
 
    ```bash
    ./build-release.sh
-   tar -czf netcoin-macos-v0.2.0.tar.gz -C release macos
+   tar -czf Astram-macos-v0.2.0.tar.gz -C release macos
    ```
 
 5. **Create GitHub Release:**
    - Tag: `v0.2.0`
-   - Title: `NetCoin v0.2.0`
+   - Title: `Astram v0.2.0`
    - Upload all three archives
    - Add release notes
 
@@ -183,33 +183,33 @@ Users download the appropriate archive for their platform and extract it.
 
 ```powershell
 # Extract ZIP file
-Expand-Archive -Path netcoin-windows-v0.2.0.zip -DestinationPath netcoin
+Expand-Archive -Path Astram-windows-v0.2.0.zip -DestinationPath Astram
 
 # Navigate to folder
-cd netcoin
+cd Astram
 
 # Run a component
-.\netcoin.ps1 node
-.\netcoin.ps1 dns
-.\netcoin.ps1 explorer
-.\netcoin.ps1 wallet
+.\Astram.ps1 node
+.\Astram.ps1 dns
+.\Astram.ps1 explorer
+.\Astram.ps1 wallet
 ```
 
 ### Linux/macOS Users
 
 ```bash
 # Extract tarball
-tar -xzf netcoin-linux-v0.2.0.tar.gz
+tar -xzf Astram-linux-v0.2.0.tar.gz
 cd linux
 
 # Make launcher executable
-chmod +x netcoin.sh
+chmod +x Astram.sh
 
 # Run a component
-./netcoin.sh node
-./netcoin.sh dns
-./netcoin.sh explorer
-./netcoin.sh wallet
+./Astram.sh node
+./Astram.sh dns
+./Astram.sh explorer
+./Astram.sh wallet
 ```
 
 ## Testing Releases
@@ -219,13 +219,13 @@ Before distribution, test each platform package:
 1. Extract on a clean system
 2. Run each component:
    ```bash
-   ./netcoin.sh node      # Should start node successfully
-   ./netcoin.sh dns       # Should start DNS server
-   ./netcoin.sh explorer  # Should start explorer
-   ./netcoin.sh wallet    # Should show wallet CLI
+   ./Astram.sh node      # Should start node successfully
+   ./Astram.sh dns       # Should start DNS server
+   ./Astram.sh explorer  # Should start explorer
+   ./Astram.sh wallet    # Should show wallet CLI
    ```
 3. Verify network connectivity between components
-4. Check data directory creation (`~/.netcoin` or `%USERPROFILE%\.netcoin`)
+4. Check data directory creation (`~/.Astram` or `%USERPROFILE%\.Astram`)
 
 ## Automated Release Checklist
 
@@ -275,7 +275,7 @@ Make scripts executable:
 
 ```bash
 chmod +x build-release.sh
-chmod +x release/linux/netcoin.sh
+chmod +x release/linux/Astram.sh
 ```
 
 ## Advanced: CI/CD Integration

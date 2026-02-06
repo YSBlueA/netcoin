@@ -5,7 +5,7 @@ members = [
     "node",
     "wallet-cli",
     "explorer",
-    "netcoin-dns",
-    "netcoin-stratum",
+    "astram-dns",
+    "astram-stratum",
 ]
 resolver = "3"

@@ -1,5 +1,5 @@
 [package]
-name = "netcoin-core"
+name = "Astram-core"
 version = "0.1.0"
 edition = "2024"
 
@@ -40,3 +40,4 @@ cust = { version = "0.3.2", optional = true }
 
 [features]
 cuda-miner = ["cust"]
+

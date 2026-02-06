@@ -1,6 +1,6 @@
 <template>
   <div class="node-status">
-    <h1>🖥️ Node Dashboard</h1>
+    <h1>Node Dashboard</h1>
 
     <div v-if="loading" class="loading">
       <div class="spinner"></div>
@@ -8,7 +8,7 @@
     </div>
 
     <div v-else-if="error" class="error-message">
-      <h3>❌ Cannot connect to node</h3>
+      <h3>Cannot connect to node</h3>
       <p>{{ error }}</p>
       <button @click="fetchStatus" class="retry-btn">Retry</button>
     </div>
@@ -16,7 +16,7 @@
     <div v-else class="status-container">
       <!-- Node Information -->
       <div class="status-card">
-        <h2>⚙️ Node Information</h2>
+        <h2>Node Information</h2>
         <div class="info-grid">
           <div class="info-item">
             <span class="label">Version:</span>
@@ -24,7 +24,7 @@
           </div>
           <div class="info-item">
             <span class="label">Status:</span>
-            <span class="value status-online">🟢 Online</span>
+            <span class="value status-online">Online</span>
           </div>
           <div class="info-item">
             <span class="label">Uptime:</span>
@@ -44,7 +44,7 @@
         class="status-card mining-card"
         :class="{ active: status.mining?.active }"
       >
-        <h2>⛏️ Mining Status</h2>
+        <h2>Mining Status</h2>
         <div class="info-grid">
           <div class="info-item highlight">
             <span class="label">Status:</span>
@@ -54,7 +54,7 @@
                 status.mining?.active ? 'mining-active' : 'mining-inactive'
               "
             >
-              {{ status.mining?.active ? "⚡ Mining" : "⏸️ Idle" }}
+              {{ status.mining?.active ? "Mining" : "Idle" }}
             </span>
           </div>
           <div class="info-item">
@@ -78,7 +78,7 @@
 
       <!-- Wallet Information -->
       <div class="status-card wallet-card">
-        <h2>💰 Wallet Information</h2>
+        <h2>Wallet Information</h2>
         <div class="info-grid">
           <div class="info-item full-width">
             <span class="label">Address:</span>
@@ -93,7 +93,7 @@
 
       <!-- Blockchain Information -->
       <div class="status-card">
-        <h2>⛓️ Blockchain Status</h2>
+        <h2>Blockchain Status</h2>
         <div class="info-grid">
           <div class="info-item highlight">
             <span class="label">Current Height:</span>
@@ -124,7 +124,7 @@
 
       <!-- Mempool Information -->
       <div class="status-card">
-        <h2>📋 Mempool Status</h2>
+        <h2>Mempool Status</h2>
         <div class="info-grid">
           <div class="info-item highlight">
             <span class="label">Pending Transactions:</span>
@@ -143,7 +143,7 @@
 
       <!-- Network Information -->
       <div class="status-card">
-        <h2>🌐 Network Status</h2>
+        <h2>Network Status</h2>
         <div class="info-grid">
           <div class="info-item highlight">
             <span class="label">Connected Peers:</span>
@@ -155,14 +155,14 @@
 
         <!-- Peer List -->
         <div v-if="peerHeights.length > 0" class="peer-list">
-          <h3>📡 Peer List</h3>
+          <h3>Peer List</h3>
           <div class="peer-item" v-for="peer in peerHeights" :key="peer.id">
             <span class="peer-id">{{ peer.id }}</span>
             <span class="peer-height">Block Height: {{ peer.height }}</span>
           </div>
         </div>
         <div v-else class="no-peers">
-          <p>🔍 No connected peers</p>
+          <p>No connected peers</p>
         </div>
       </div>
 
@@ -177,7 +177,7 @@
           <span>Auto Refresh (every {{ refreshInterval / 1000 }} seconds)</span>
         </label>
         <button @click="fetchStatus" class="refresh-btn">
-          🔄 Manual Refresh
+          Manual Refresh
         </button>
       </div>
     </div>
@@ -195,7 +195,7 @@ export default {
     const loading = ref(true);
     const error = ref(null);
     const autoRefresh = ref(true);
-    const refreshInterval = ref(5000); // 5초
+    const refreshInterval = ref(5000); // 5 seconds
     let refreshTimer = null;
 
     const peerHeights = computed(() => {
@@ -285,20 +285,20 @@ export default {
     };
 
     const formatBalance = (balanceHex) => {
-      if (!balanceHex) return "0 NTC";
+      if (!balanceHex) return "0 ASRM";
       
       try {
         // Remove 0x prefix if present
         const hex = balanceHex.startsWith("0x") ? balanceHex.slice(2) : balanceHex;
         // Convert hex to BigInt
         const wei = BigInt("0x" + hex);
-        // Convert to NTC (18 decimals)
-        const ntc = Number(wei) / 1e18;
+        // Convert to ASRM (18 decimals)
+        const ASRM = Number(wei) / 1e18;
         
-        return `${ntc.toFixed(4)} NTC`;
+        return `${ASRM.toFixed(4)} ASRM`;
       } catch (e) {
         console.error("Error formatting balance:", e);
-        return "0 NTC";
+        return "0 ASRM";
       }
     };
 
@@ -638,3 +638,4 @@ h1 {
   }
 }
 </style>
+

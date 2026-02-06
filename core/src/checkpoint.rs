@@ -1,16 +1,16 @@
 /// Checkpoint Policy System (Not Consensus Rules)
-/// 
+///
 /// Checkpoints are POLICY-LEVEL protections, NOT consensus rules.
 /// They provide additional security for:
 /// - Mining pools (prevent deep reorg attacks on payouts)
 /// - Exchanges (safe confirmation depth for deposits)
 /// - Block explorers (stable reference points)
-/// 
+///
 /// Effects:
 /// - Prevents long-range history rewrite attacks
 /// - Provides network stability during early mainnet phase
 /// - Gives social consensus anchor points
-/// 
+///
 /// Important: Checkpoints do NOT affect the validity of blocks themselves.
 /// They only affect chain selection policy in this specific node implementation.
 
@@ -23,14 +23,14 @@ pub struct Checkpoint {
     pub description: String, // Human-readable description of checkpoint significance
 }
 
-/// Get hardcoded checkpoints for NetCoin
-/// 
+/// Get hardcoded checkpoints for Astram
+///
 /// These are POLICY anchors, not consensus rules.
 /// Nodes MAY use these for:
 /// - Rejecting chains that conflict with checkpoints
 /// - Faster initial sync by trusting checkpoint validity
 /// - Protection against very deep reorganizations
-/// 
+///
 /// Checkpoints should be set at:
 /// - Genesis (height 0)
 /// - Major network milestones (every 10,000 blocks)
@@ -59,11 +59,11 @@ pub fn get_checkpoints() -> Vec<Checkpoint> {
 }
 
 /// Policy check: Validate that a chain doesn't conflict with checkpoints
-/// 
+///
 /// This is a POLICY decision, not a consensus rule.
 /// Returns false if the block conflicts with a known checkpoint,
 /// which means this chain should be rejected by THIS node's policy.
-/// 
+///
 /// Other nodes without checkpoints enabled will still see the block as valid.
 pub fn validate_against_checkpoints(height: u64, hash: &str) -> bool {
     let checkpoints = get_checkpoints();
@@ -77,19 +77,16 @@ pub fn validate_against_checkpoints(height: u64, hash: &str) -> bool {
 
             if cp.hash != hash {
                 log::error!(
-                    "🚨 CHECKPOINT POLICY VIOLATION: Block at height {} has hash {}, but checkpoint requires {}",
+                    "CHECKPOINT POLICY VIOLATION: Block at height {} has hash {}, but checkpoint requires {}",
                     height,
                     &hash[..16.min(hash.len())],
                     &cp.hash[..16.min(cp.hash.len())]
                 );
-                log::error!(
-                    "   Checkpoint description: {}",
-                    cp.description
-                );
+                log::error!("   Checkpoint description: {}", cp.description);
                 return false;
             } else {
                 log::info!(
-                    "✅ Block matches checkpoint at height {}: {}",
+                    "Block matches checkpoint at height {}: {}",
                     height,
                     cp.description
                 );

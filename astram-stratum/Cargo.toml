@@ -1,11 +1,11 @@
 [package]
-name = "netcoin-stratum"
+name = "Astram-stratum"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-netcoin-core = { path = "../core" }
-netcoin-config = { path = "../config" }
+Astram-core = { path = "../core" }
+Astram-config = { path = "../config" }
 anyhow = "1.0"
 base64 = "0.22"
 hex = "0.4"
@@ -22,3 +22,4 @@ warp = { version = "0.4.2", features = ["server"] }
 rand = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 bincode = "2.0.1"
+

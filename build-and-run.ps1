@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# NetCoin Build and Run Script for Windows/PowerShell
+# Astram Build and Run Script for Windows/PowerShell
 # Usage: .\build-and-run.ps1 [node|dns|explorer|wallet|all]
 
 param(
@@ -17,16 +17,16 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Colors for output
-function Write-Info { Write-Host "ℹ️  $args" -ForegroundColor Cyan }
-function Write-Success { Write-Host "✅ $args" -ForegroundColor Green }
-function Write-Error { Write-Host "❌ $args" -ForegroundColor Red }
+function Write-Info { Write-Host "INFO  $args" -ForegroundColor Cyan }
+function Write-Success { Write-Host "OK    $args" -ForegroundColor Green }
+function Write-Error { Write-Host "ERROR $args" -ForegroundColor Red }
 
 # Build configuration
 $BuildMode = if ($Release) { "release" } else { "debug" }
 $BuildFlag = if ($Release) { "--release" } else { "" }
 $TargetDir = "target/$BuildMode"
 
-Write-Info "NetCoin Build & Run Script"
+Write-Info "Astram Build & Run Script"
 Write-Info "Component: $Component | Mode: $BuildMode"
 Write-Host ""
 
@@ -81,16 +81,16 @@ function Run-Component {
 try {
     switch ($Component) {
         'node' {
-            Build-Component "NetCoin Node" "."
-            Run-Component "NetCoin Node" "netcoin-node.exe"
+            Build-Component "Astram Node" "."
+            Run-Component "Astram Node" "Astram-node.exe"
         }
         'dns' {
-            Build-Component "DNS Server" "netcoin-dns"
-            Run-Component "DNS Server" "netcoin-dns.exe"
+            Build-Component "DNS Server" "Astram-dns"
+            Run-Component "DNS Server" "Astram-dns.exe"
         }
         'explorer' {
             Build-Component "Explorer" "explorer"
-            Run-Component "Explorer" "netcoin-explorer.exe"
+            Run-Component "Explorer" "Astram-explorer.exe"
         }
         'wallet' {
             Build-Component "Wallet CLI" "wallet-cli"
@@ -98,16 +98,16 @@ try {
         }
         'all' {
             Write-Info "Building all components..."
-            Build-Component "NetCoin Core" "."
-            Build-Component "DNS Server" "netcoin-dns"
+            Build-Component "Astram Core" "."
+            Build-Component "DNS Server" "Astram-dns"
             Build-Component "Explorer" "explorer"
             Build-Component "Wallet CLI" "wallet-cli"
             Write-Success "All components built successfully!"
             Write-Host ""
             Write-Info "To run components:"
-            Write-Host "  Node:     .\$TargetDir\netcoin-node.exe"
-            Write-Host "  DNS:      .\$TargetDir\netcoin-dns.exe"
-            Write-Host "  Explorer: .\$TargetDir\netcoin-explorer.exe"
+            Write-Host "  Node:     .\$TargetDir\Astram-node.exe"
+            Write-Host "  DNS:      .\$TargetDir\Astram-dns.exe"
+            Write-Host "  Explorer: .\$TargetDir\Astram-explorer.exe"
             Write-Host "  Wallet:   .\$TargetDir\wallet-cli.exe"
         }
     }
@@ -115,3 +115,4 @@ try {
     Write-Error "Operation failed: $_"
     exit 1
 }
+

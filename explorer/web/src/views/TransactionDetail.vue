@@ -3,11 +3,11 @@
     <div v-if="loading" class="loading">
       <p>Loading transaction...</p>
       <p v-if="isEthHash" class="info-text">
-        Converting Ethereum transaction hash to NetCoin transaction...
+        Converting Ethereum transaction hash to Astram transaction...
       </p>
     </div>
     <div v-else-if="error" class="error-container">
-      <h2>❌ Transaction not found</h2>
+      <h2>Transaction not found</h2>
       <p class="error-message">{{ error }}</p>
       <p class="hash-display">
         Searched hash: <code>{{ searchHash }}</code>
@@ -22,10 +22,10 @@
       <h1>Transaction Details</h1>
 
       <div v-if="isCoinbase" class="info-banner coinbase-banner">
-        ⛏️ Mining Reward Transaction
+        Mining Reward Transaction
       </div>
       <div v-else-if="isEthHash" class="info-banner">
-        ℹ️ This transaction was sent through MetaMask
+        This transaction was sent through MetaMask
       </div>
 
       <div class="detail-grid">
@@ -59,20 +59,20 @@
         <div class="detail-item">
           <span class="label">{{ isCoinbase ? 'Reward Amount' : 'Transfer Amount' }}</span>
           <span class="value amount"
-            >{{ formatAmount(transaction.amount) }} NTC</span
+            >{{ formatAmount(transaction.amount) }} ASRM</span
           >
         </div>
         <div class="detail-item" v-if="!isCoinbase">
           <span class="label">Fee</span>
           <span class="value fee">
-            {{ formatAmount(transaction.fee) }} NTC
+            {{ formatAmount(transaction.fee) }} ASRM
             <span class="natoshi-info">({{ formatNatoshi(transaction.fee) }} natoshi)</span>
           </span>
         </div>
         <div class="detail-item" v-if="!isCoinbase">
           <span class="label">Total Amount</span>
           <span class="value total"
-            >{{ formatTotal(transaction.amount, transaction.fee) }} NTC</span
+            >{{ formatTotal(transaction.amount, transaction.fee) }} ASRM</span
           >
         </div>
         <div class="detail-item">
@@ -181,9 +181,9 @@ export default {
       }
 
       const divisor = BigInt("1000000000000000000"); // 10^18
-      const ntc = Number(num) / Number(divisor);
+      const ASRM = Number(num) / Number(divisor);
 
-      return ntc.toLocaleString("en-US", {
+      return ASRM.toLocaleString("en-US", {
         minimumFractionDigits: 0,
         maximumFractionDigits: 18,
       });
@@ -220,9 +220,9 @@ export default {
 
       const total = numAmount + numFee;
       const divisor = BigInt("1000000000000000000"); // 10^18
-      const ntc = Number(total) / Number(divisor);
+      const ASRM = Number(total) / Number(divisor);
 
-      return ntc.toLocaleString("en-US", {
+      return ASRM.toLocaleString("en-US", {
         minimumFractionDigits: 0,
         maximumFractionDigits: 18,
       });
@@ -467,3 +467,4 @@ h1 {
   font-weight: bold;
 }
 </style>
+

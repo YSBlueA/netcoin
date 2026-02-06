@@ -354,7 +354,7 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
 
-    info!("Starting Netcoin DNS Server...");
+    info!("Starting Astram DNS Server...");
     info!("Max node age: {} seconds", args.max_age);
 
     let state = AppState::new(args.max_age);
@@ -383,7 +383,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Build router
     let app = Router::new()
-        .route("/", get(|| async { "Netcoin DNS Server" }))
+        .route("/", get(|| async { "Astram DNS Server" }))
         .route("/health", get(health_check))
         .route("/register", post(register_node))
         .route("/nodes", get(get_nodes))
@@ -403,3 +403,4 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
