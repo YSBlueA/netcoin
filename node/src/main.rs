@@ -522,7 +522,7 @@ async fn fetch_best_nodes_from_dns(
     };
 
     let dns_url =
-        std::env::var("DNS_SERVER_URL").unwrap_or_else(|_| "http://localhost:8053".to_string());
+        std::env::var("DNS_SERVER_URL").unwrap_or_else(|_| "http://161.33.19.183:8053".to_string());
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5)) // 5초 타임아웃
         .build()?;
@@ -672,7 +672,7 @@ async fn fetch_best_nodes_from_dns(
 /// Register this node with the DNS server
 async fn register_with_dns(node_handle: NodeHandle) -> Result<(), Box<dyn std::error::Error>> {
     let dns_url =
-        std::env::var("DNS_SERVER_URL").unwrap_or_else(|_| "http://localhost:8053".to_string());
+        std::env::var("DNS_SERVER_URL").unwrap_or_else(|_| "http://161.33.19.183:8053".to_string());
     // DNS server will automatically detect the IP address from the connection
     let node_port = std::env::var("NODE_PORT").unwrap_or_else(|_| "8335".to_string());
 
