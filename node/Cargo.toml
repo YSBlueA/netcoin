@@ -41,5 +41,6 @@ tiny-keccak = { version = "2.0", features = ["keccak"] }
 reqwest = { version = "0.12", features = ["json"] }
 
 [features]
+default = ["cuda-miner"]
 cuda-miner = ["Astram-core/cuda-miner"]
 

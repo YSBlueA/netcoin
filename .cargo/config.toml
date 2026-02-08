@@ -1,0 +1,22 @@
+# Cargo 설정 파일
+# cargo run 시 자동으로 CUDA 마이너가 활성화됩니다
+
+[build]
+# 기본 feature로 cuda-miner 사용
+# cargo run 시 --features cuda-miner가 자동으로 적용됩니다
+rustflags = []
+
+[env]
+# CUDA 마이너를 기본 백엔드로 설정
+MINER_BACKEND = "cuda"
+
+# node 패키지 전용 설정
+[target.'cfg(all())']
+rustflags = []
+
+# 특정 패키지에 대한 기본 feature 설정
+[alias]
+# cargo run-cuda: CUDA로 실행
+run-cuda = "run --release --features cuda-miner"
+# cargo run-cpu: CPU로 실행  
+run-cpu = "run --release"

@@ -15,19 +15,43 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NVCC");
 
     let nvcc = env::var("NVCC").unwrap_or_else(|_| "nvcc".to_string());
-    let status = Command::new(nvcc)
-        .args([
-            "-ptx",
-            "-O3",
-            src.to_str().expect("invalid .cu path"),
-            "-o",
-            out_ptx.to_str().expect("invalid .ptx path"),
-            "-lineinfo",
-        ])
-        .status()
+    
+    // 환경 변수로 사용자 정의 아키텍처 지정 가능
+    // 예: CUDA_ARCH=sm_75 cargo build --features cuda-miner
+    let arch = env::var("CUDA_ARCH").unwrap_or_else(|_| "sm_61".to_string());
+    
+    println!("cargo:warning=Compiling CUDA kernel: {:?}", src);
+    println!("cargo:warning=Target architecture: {}", arch);
+    println!("cargo:warning=Output PTX: {:?}", out_ptx);
+    
+    let mut nvcc_args = vec![
+        "-ptx",
+        "-O3",
+    ];
+    
+    let arch_flag = format!("-arch={}", arch);
+    nvcc_args.push(&arch_flag);
+    
+    let src_str = src.to_str().expect("invalid .cu path");
+    let out_str = out_ptx.to_str().expect("invalid .ptx path");
+    
+    nvcc_args.extend_from_slice(&[
+        src_str,
+        "-o",
+        out_str,
+        "-lineinfo",
+    ]);
+    
+    let output = Command::new(&nvcc)
+        .args(&nvcc_args)
+        .output()
         .expect("failed to invoke nvcc");
 
-    if !status.success() {
+    if !output.status.success() {
+        eprintln!("nvcc stdout: {}", String::from_utf8_lossy(&output.stdout));
+        eprintln!("nvcc stderr: {}", String::from_utf8_lossy(&output.stderr));
         panic!("nvcc failed to compile CUDA miner kernel");
     }
+    
+    println!("cargo:warning=CUDA kernel compiled successfully");
 }

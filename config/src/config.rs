@@ -116,7 +116,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             wallet_path: Self::default_wallet_path(),
-            node_rpc_url: "http://127.0.0.1:8333".to_string(),
+            node_rpc_url: "http://127.0.0.1:19533".to_string(),
             data_dir: Self::default_data_dir(),
         }
     }

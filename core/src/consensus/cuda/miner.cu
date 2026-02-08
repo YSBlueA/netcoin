@@ -187,15 +187,10 @@ extern "C" __global__ void mine_kernel(
             msg[len++] = prefix[j];
         }
 
-        uint64_t n = nonce;
-        do {
-            uint8_t byte = (uint8_t)(n & 0x7F);
-            n >>= 7;
-            if (n != 0) {
-                byte |= 0x80;
-            }
-            msg[len++] = byte;
-        } while (n != 0);
+        // Fixed-length encoding: u64 = 8 bytes little-endian
+        for (int j = 0; j < 8; j++) {
+            msg[len++] = (uint8_t)(nonce >> (8 * j));
+        }
 
         for (int j = 0; j < suffix_len; j++) {
             msg[len++] = suffix[j];

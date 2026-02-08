@@ -1336,12 +1336,6 @@ async fn mining_loop(
             }
         }
 
-        // Mark mining as inactive before sleep
-        {
-            let state = node_handle.lock().unwrap();
-            state.mining_active.store(false, OtherOrdering::SeqCst);
-        }
-
         // Wait before next cycle, but check shutdown flag frequently for quick response
         for _ in 0..10 {
             if shutdown_flag.load(OtherOrdering::SeqCst) {

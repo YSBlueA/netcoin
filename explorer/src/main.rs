@@ -29,7 +29,7 @@ async fn main() -> std::io::Result<()> {
     // Background sync with the Node process
     let db_sync = explorer_db.clone();
     tokio::spawn(async move {
-        let rpc_client = NodeRpcClient::new("http://127.0.0.1:8333");
+        let rpc_client = NodeRpcClient::new("http://127.0.0.1:19533");
 
         info!("Starting blockchain indexing...");
 

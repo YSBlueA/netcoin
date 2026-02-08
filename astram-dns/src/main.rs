@@ -136,7 +136,7 @@ impl AppState {
                 let address = address.clone();
 
                 let task = tokio::spawn(async move {
-                    let health_url = format!("http://{}:8333/health", address);
+                    let health_url = format!("http://{}:19533/health", address);
                     match client.get(&health_url).send().await {
                         Ok(response) if response.status().is_success() => (node_id, true),
                         _ => (node_id, false),

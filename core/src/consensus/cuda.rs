@@ -18,30 +18,16 @@ const THREADS_PER_BLOCK: u32 = 256;
 const MAX_BLOCKS: u32 = 4096;
 
 fn encode_field<T: bincode::Encode>(value: &T) -> Result<Vec<u8>> {
-    let config = bincode::config::standard();
+    let config = bincode::config::standard()
+        .with_fixed_int_encoding(); // Use fixed-length encoding
     Ok(bincode::encode_to_vec(value, config)?)
 }
 
-fn encode_varint_u64(mut value: u64) -> Vec<u8> {
-    let mut out = Vec::new();
-    loop {
-        let mut byte = (value & 0x7F) as u8;
-        value >>= 7;
-        if value != 0 {
-            byte |= 0x80;
-        }
-        out.push(byte);
-        if value == 0 {
-            break;
-        }
-    }
-    out
-}
-
 fn build_header_bytes(prefix: &[u8], nonce: u64, suffix: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(prefix.len() + 16 + suffix.len());
+    let mut out = Vec::with_capacity(prefix.len() + 8 + suffix.len());
     out.extend_from_slice(prefix);
-    out.extend_from_slice(&encode_varint_u64(nonce));
+    // Fixed-length encoding: u64 = 8 bytes little-endian
+    out.extend_from_slice(&nonce.to_le_bytes());
     out.extend_from_slice(suffix);
     out
 }
@@ -56,7 +42,8 @@ pub fn mine_block_with_coinbase_cuda(
     cancel_flag: Arc<AtomicBool>,
     hashrate: Option<Arc<std::sync::Mutex<f64>>>,
 ) -> Result<Block> {
-    let _ctx = cust::quick_init()?;
+    let _ctx = cust::quick_init()
+        .map_err(|e| anyhow!("Failed to initialize CUDA context: {}. Make sure you have an NVIDIA GPU and proper drivers installed.", e))?;
 
     let coinbase = Transaction::coinbase(miner_addr, reward).with_hashes();
     let mut all_txs = vec![coinbase];
@@ -96,9 +83,12 @@ pub fn mine_block_with_coinbase_cuda(
     }
 
     let ptx = include_str!(concat!(env!("OUT_DIR"), "/miner.ptx"));
-    let module = Module::from_ptx(ptx, &[])?;
-    let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
-    let function = module.get_function("mine_kernel")?;
+    let module = Module::from_ptx(ptx, &[])
+        .map_err(|e| anyhow!("Failed to load CUDA PTX module: {}", e))?;
+    let stream = Stream::new(StreamFlags::NON_BLOCKING, None)
+        .map_err(|e| anyhow!("Failed to create CUDA stream: {}", e))?;
+    let function = module.get_function("mine_kernel")
+        .map_err(|e| anyhow!("Failed to get CUDA kernel function 'mine_kernel': {}", e))?;
 
     let prefix_dev = DeviceBuffer::from_slice(&prefix)?;
     let suffix_dev = DeviceBuffer::from_slice(&suffix)?;
@@ -167,20 +157,29 @@ pub fn mine_block_with_coinbase_cuda(
             found_nonce.copy_to(&mut nonce_host)?;
             found_hash.copy_to(&mut hash_host)?;
 
-            header.nonce = nonce_host[0];
-            let hash = compute_header_hash(&header)?;
-            let hash_hex = hex::encode(hash_host);
-            if hash != hash_hex {
-                return Err(anyhow!("GPU hash mismatch against CPU verification"));
+            // CPU verification using the same method as GPU
+            let nonce = nonce_host[0];
+            let recomposed = build_header_bytes(&prefix, nonce, &suffix);
+            let cpu_hash = crate::block::sha256d(&recomposed);
+            let cpu_hash_hex = hex::encode(cpu_hash);
+            let gpu_hash_hex = hex::encode(hash_host);
+            
+            if cpu_hash_hex != gpu_hash_hex {
+                return Err(anyhow!("GPU hash mismatch - GPU: {}, CPU: {}", gpu_hash_hex, cpu_hash_hex));
             }
-            if !hash.starts_with(&"0".repeat(difficulty as usize)) {
+            if !cpu_hash_hex.starts_with(&"0".repeat(difficulty as usize)) {
                 return Err(anyhow!("GPU found nonce did not satisfy target"));
             }
 
+            header.nonce = nonce;
+            
+            // Compute the canonical hash using bincode serialization for block storage
+            let canonical_hash = compute_header_hash(&header)?;
+            
             let block = Block {
                 header: header.clone(),
                 transactions: all_txs,
-                hash,
+                hash: canonical_hash,
             };
             return Ok(block);
         }

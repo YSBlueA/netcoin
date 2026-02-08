@@ -825,9 +825,9 @@ pub async fn run_server(node: NodeHandle) {
         .with(warp::log("Astram::http"))
         .boxed();
 
-    println!("HTTP server running at http://127.0.0.1:8333");
+    println!("HTTP server running at http://127.0.0.1:19533");
 
-    let addr = ([127, 0, 0, 1], 8333);
+    let addr = ([127, 0, 0, 1], 19533);
     warp::serve(routes).run(addr).await;
 }
 

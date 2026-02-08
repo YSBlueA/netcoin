@@ -98,7 +98,7 @@ $ConfigContent = @'
 # Copy this file and modify as needed
 
 # Node Settings
-NODE_PORT=8333
+NODE_PORT=19533
 P2P_PORT=8335
 
 # DNS Server
@@ -141,7 +141,7 @@ $ReadmeContent = @'
 
 ## Components
 
-- **Astram-node.exe** - Main blockchain node (HTTP: 8333, P2P: 8335)
+- **Astram-node.exe** - Main blockchain node (HTTP: 19533, P2P: 8335)
 - **Astram-dns.exe** - DNS discovery server (Port: 8053)
 - **Astram-explorer.exe** - Web-based blockchain explorer (Port: 3000)
 - **wallet-cli.exe** - Command-line wallet interface

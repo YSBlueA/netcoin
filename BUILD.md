@@ -152,7 +152,7 @@ To run a complete local network:
 
 ## Default Ports
 
-- **Node HTTP RPC**: 8333
+- **Node HTTP RPC**: 19533
 - **Node P2P**: 8335
 - **DNS Server**: 8053
 - **Explorer**: 3000
@@ -183,8 +183,8 @@ If a port is already in use, stop the existing process:
 **Windows:**
 
 ```powershell
-# Find process using port 8333
-netstat -ano | findstr :8333
+# Find process using port 19533
+netstat -ano | findstr :19533
 
 # Kill process by PID
 taskkill /PID <PID> /F
@@ -193,8 +193,8 @@ taskkill /PID <PID> /F
 **Linux/macOS:**
 
 ```bash
-# Find and kill process using port 8333
-lsof -ti:8333 | xargs kill -9
+# Find and kill process using port 19533
+lsof -ti:19533 | xargs kill -9
 ```
 
 ### Missing Dependencies

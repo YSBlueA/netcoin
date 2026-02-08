@@ -112,7 +112,7 @@ cat > "$RELEASE_DIR/config/example.conf" << 'CONFIG_EOF'
 # Copy this file and modify as needed
 
 # Node Settings
-NODE_PORT=8333
+NODE_PORT=19533
 P2P_PORT=8335
 
 # DNS Server
@@ -153,7 +153,7 @@ cat > "$RELEASE_DIR/README.md" << README_EOF
 
 ## Components
 
-- **Astram-node** - Main blockchain node (HTTP: 8333, P2P: 8335)
+- **Astram-node** - Main blockchain node (HTTP: 19533, P2P: 8335)
 - **Astram-dns** - DNS discovery server (Port: 8053)
 - **Astram-explorer** - Web-based blockchain explorer (Port: 3000)
 - **wallet-cli** - Command-line wallet interface

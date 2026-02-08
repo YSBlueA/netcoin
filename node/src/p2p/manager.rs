@@ -749,9 +749,9 @@ impl PeerManager {
     pub async fn dns_seed_lookup(&self) -> anyhow::Result<Vec<String>> {
         use tokio::net::lookup_host;
         let seeds = vec![
-            "seed1.Astram.org:8333",
-            "seed2.Astram.org:8333",
-            "dnsseed.Astram.io:8333",
+            "seed1.Astram.org:19533",
+            "seed2.Astram.org:19533",
+            "dnsseed.Astram.io:19533",
         ];
 
         let mut peers = Vec::new();

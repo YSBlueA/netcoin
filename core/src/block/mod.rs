@@ -36,7 +36,8 @@ pub fn to_hex(hash: &[u8; 32]) -> String {
 
 /// Deterministic serialization: use bincode (v2 Encode trait)
 pub fn serialize_header(header: &BlockHeader) -> Result<Vec<u8>, bincode::error::EncodeError> {
-    let config = bincode::config::standard();
+    let config = bincode::config::standard()
+        .with_fixed_int_encoding(); // Use fixed-length encoding for integers (u64 = 8 bytes)
     Ok(bincode::encode_to_vec(header, config)?)
 }
 
