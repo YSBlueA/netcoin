@@ -11,6 +11,34 @@ function Write-Error { Write-Host "ERROR $args" -ForegroundColor Red }
 Write-Info "Astram Release Builder for Windows"
 Write-Host ""
 
+function Select-Backend {
+    Write-Info "Select build backend:"
+    Write-Host "  1) CPU"
+    Write-Host "  2) GPU (CUDA)"
+    $choice = Read-Host "Choose [1-2] (default: 1)"
+    switch ($choice) {
+        "2" { return "cuda" }
+        "gpu" { return "cuda" }
+        "GPU" { return "cuda" }
+        default { return "cpu" }
+    }
+}
+
+$BuildBackend = Select-Backend
+Write-Info "Build backend: $BuildBackend"
+
+$NodeFeatureArgs = @()
+$ExplorerFeatureArgs = @()
+if ($BuildBackend -eq "cuda") {
+    $NodeFeatureArgs += @("--features", "cuda-miner")
+    $ExplorerFeatureArgs += @("--features", "cuda-miner")
+    $env:MINER_BACKEND = "cuda"
+} else {
+    $NodeFeatureArgs += @("--no-default-features")
+    $ExplorerFeatureArgs += @("--no-default-features")
+    $env:MINER_BACKEND = "cpu"
+}
+
 # Clean previous release
 $ReleaseDir = "release/windows"
 if (Test-Path $ReleaseDir) {
@@ -25,7 +53,9 @@ New-Item -ItemType Directory -Force -Path "$ReleaseDir/config" | Out-Null
 
 # Build all components in release mode
 Write-Info "Building all components in release mode..."
-cargo build --release
+cargo build --release --workspace --exclude Astram-node --exclude Astram-explorer
+cargo build --release -p Astram-node @NodeFeatureArgs
+cargo build --release -p Astram-explorer @ExplorerFeatureArgs
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Build failed!"
@@ -70,6 +100,63 @@ param(
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$DefaultBase = if ($env:APPDATA) { Join-Path $env:APPDATA "Astram" } else { Join-Path $env:USERPROFILE ".Astram" }
+$DefaultConfigFile = Join-Path $DefaultBase "config.json"
+$DefaultDataDir = Join-Path $DefaultBase "data"
+$DefaultWalletPath = Join-Path $DefaultBase "wallet.json"
+
+function Ensure-ConfigDefaults {
+    if (-not (Test-Path $DefaultConfigFile)) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $DefaultConfigFile -Parent) | Out-Null
+        $defaultConfig = @{
+            wallet_path = $DefaultWalletPath
+            node_rpc_url = "http://127.0.0.1:19533"
+            data_dir = $DefaultDataDir
+        }
+        $defaultConfig | ConvertTo-Json -Depth 3 | Set-Content -Path $DefaultConfigFile
+    }
+
+    try {
+        $config = Get-Content -Raw -Path $DefaultConfigFile | ConvertFrom-Json
+    } catch {
+        $config = [pscustomobject]@{}
+    }
+
+    $changed = $false
+    if (-not $config.wallet_path -or [string]::IsNullOrWhiteSpace($config.wallet_path)) {
+        $config | Add-Member -Force -NotePropertyName wallet_path -NotePropertyValue $DefaultWalletPath
+        $changed = $true
+    }
+    if (-not $config.node_rpc_url -or [string]::IsNullOrWhiteSpace($config.node_rpc_url)) {
+        $config | Add-Member -Force -NotePropertyName node_rpc_url -NotePropertyValue "http://127.0.0.1:19533"
+        $changed = $true
+    }
+    if (-not $config.data_dir -or [string]::IsNullOrWhiteSpace($config.data_dir)) {
+        $config | Add-Member -Force -NotePropertyName data_dir -NotePropertyValue $DefaultDataDir
+        $changed = $true
+    }
+
+    if (-not (Test-Path $config.data_dir)) {
+        $config.data_dir = $DefaultDataDir
+        $changed = $true
+    }
+    if (-not (Test-Path $config.wallet_path)) {
+        $config.wallet_path = $DefaultWalletPath
+        $changed = $true
+    }
+
+    if ($changed) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $DefaultConfigFile -Parent) | Out-Null
+        $config | ConvertTo-Json -Depth 3 | Set-Content -Path $DefaultConfigFile
+    }
+
+    New-Item -ItemType Directory -Force -Path $config.data_dir | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path $config.wallet_path -Parent) | Out-Null
+
+    return $config
+}
+
+$config = Ensure-ConfigDefaults
 
 switch ($Component) {
     'node'     { $exe = "Astram-node.exe" }
@@ -85,8 +172,20 @@ if (-not (Test-Path $exePath)) {
     exit 1
 }
 
+if ($Component -eq 'node' -and -not (Test-Path $config.wallet_path)) {
+    Write-Host "Wallet file not found. Creating a new wallet at $($config.wallet_path)" -ForegroundColor Yellow
+    & (Join-Path $ScriptDir "wallet-cli.exe") generate
+}
+
 Write-Host "Starting Astram $Component..." -ForegroundColor Green
-& $exePath @RemainingArgs
+if ($Component -eq 'node') {
+    $proc = Start-Process -FilePath $exePath -ArgumentList $RemainingArgs -PassThru
+    Start-Sleep -Seconds 10
+    Start-Process "http://localhost:19533" | Out-Null
+    Wait-Process -Id $proc.Id
+} else {
+    & $exePath @RemainingArgs
+}
 '@
 
 Set-Content -Path "$ReleaseDir/Astram.ps1" -Value $LauncherContent

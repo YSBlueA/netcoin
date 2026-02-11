@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 Astram-core = { path = "../core" }
-Astram-node = { path = "../node" }
+Astram-node = { path = "../node", default-features = false }
 tokio = { version = "1", features = ["full"] }
 actix-web = "4"
 actix-cors = "0.7"
@@ -24,3 +24,6 @@ bincode = "2.0.0"
 primitive-types = { version = "0.12", features = ["serde"] }
 rocksdb = "0.24.0"
 
+[features]
+default = []
+cuda-miner = ["Astram-node/cuda-miner"]
