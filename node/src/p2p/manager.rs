@@ -1,5 +1,7 @@
 use crate::p2p::messages::{HandshakeInfo, InventoryType, P2pMessage};
 use crate::p2p::peer::{Peer, PeerId};
+use Astram_core::block;
+use Astram_core::transaction::Transaction;
 use bincode::{Decode, Encode};
 use bytes::Bytes;
 use futures::SinkExt;
@@ -7,13 +9,12 @@ use futures::StreamExt;
 use futures::future;
 use hex;
 use log::{info, warn};
-use Astram_core::block;
-use Astram_core::transaction::Transaction;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
@@ -27,8 +28,50 @@ pub struct SavedPeer {
 pub const MAX_OUTBOUND: usize = 8;
 pub const PEERS_FILE: &str = "peers.json";
 pub const PROTOCOL_VERSION: u32 = 1;
-pub const NETWORK_ID: &str = "Astram-mainnet";
-pub const CHAIN_ID: u64 = 1;
+pub const MAINNET_NETWORK_ID: &str = "Astram-mainnet";
+pub const TESTNET_NETWORK_ID: &str = "Astram-testnet";
+pub const MAINNET_CHAIN_ID: u64 = 1;
+pub const TESTNET_CHAIN_ID: u64 = 8888;
+
+static NETWORK_ID: OnceLock<String> = OnceLock::new();
+static CHAIN_ID: OnceLock<u64> = OnceLock::new();
+
+fn resolve_network_id() -> &'static str {
+    NETWORK_ID
+        .get_or_init(|| {
+            if let Ok(value) = std::env::var("ASTRAM_NETWORK_ID") {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+
+            let network = std::env::var("ASTRAM_NETWORK").unwrap_or_else(|_| "mainnet".to_string());
+            if network.eq_ignore_ascii_case("testnet") {
+                TESTNET_NETWORK_ID.to_string()
+            } else {
+                MAINNET_NETWORK_ID.to_string()
+            }
+        })
+        .as_str()
+}
+
+fn resolve_chain_id() -> u64 {
+    *CHAIN_ID.get_or_init(|| {
+        if let Ok(value) = std::env::var("ASTRAM_CHAIN_ID") {
+            if let Ok(parsed) = value.trim().parse::<u64>() {
+                return parsed;
+            }
+        }
+
+        let network = std::env::var("ASTRAM_NETWORK").unwrap_or_else(|_| "mainnet".to_string());
+        if network.eq_ignore_ascii_case("testnet") {
+            TESTNET_CHAIN_ID
+        } else {
+            MAINNET_CHAIN_ID
+        }
+    })
+}
 
 // Security: Network-level protection constants
 pub const MAX_PEERS_PER_IP: usize = 3; // Maximum connections from same IP
@@ -337,8 +380,8 @@ impl PeerManager {
                     "transactions".to_string(),
                     "headers".to_string(),
                 ],
-                network_id: NETWORK_ID.to_string(),
-                chain_id: CHAIN_ID,
+                network_id: resolve_network_id().to_string(),
+                chain_id: resolve_chain_id(),
                 height: my_height,
                 listening_port: my_port,
             };
@@ -489,7 +532,7 @@ impl PeerManager {
                     // Could disconnect here
                 }
 
-                if info.network_id != NETWORK_ID {
+                if info.network_id != resolve_network_id() {
                     warn!(
                         "Peer {} is on different network: {}",
                         peer_id, info.network_id
@@ -497,7 +540,7 @@ impl PeerManager {
                     // Could disconnect here
                 }
 
-                if info.chain_id != CHAIN_ID {
+                if info.chain_id != resolve_chain_id() {
                     warn!("Peer {} has different chain_id: {}", peer_id, info.chain_id);
                     // Could disconnect here
                 }
@@ -533,8 +576,8 @@ impl PeerManager {
                             "transactions".to_string(),
                             "headers".to_string(),
                         ],
-                        network_id: NETWORK_ID.to_string(),
-                        chain_id: CHAIN_ID,
+                        network_id: resolve_network_id().to_string(),
+                        chain_id: resolve_chain_id(),
                         height: my_height,
                         listening_port: my_port,
                     };
@@ -938,4 +981,3 @@ struct DnsNodesResponse {
     nodes: Vec<DnsNodeInfo>,
     count: usize,
 }
-

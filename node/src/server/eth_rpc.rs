@@ -115,13 +115,29 @@ async fn handle_rpc(
 
 // RPC Method implementations
 
+fn resolve_chain_id() -> u64 {
+    if let Ok(value) = std::env::var("ASTRAM_CHAIN_ID") {
+        if let Ok(parsed) = value.trim().parse::<u64>() {
+            return parsed;
+        }
+    }
+
+    let network = std::env::var("ASTRAM_NETWORK").unwrap_or_else(|_| "mainnet".to_string());
+    if network.eq_ignore_ascii_case("testnet") {
+        8888
+    } else {
+        1
+    }
+}
+
 fn eth_chain_id(id: Value) -> JsonRpcResponse {
-    // Chain ID for Astram (use a unique ID, e.g., 8888)
-    JsonRpcResponse::success(id, json!("0x22b8")) // 8888 in hex
+    let chain_id = resolve_chain_id();
+    JsonRpcResponse::success(id, json!(format!("0x{:x}", chain_id)))
 }
 
 fn net_version(id: Value) -> JsonRpcResponse {
-    JsonRpcResponse::success(id, json!("8888"))
+    let chain_id = resolve_chain_id();
+    JsonRpcResponse::success(id, json!(chain_id.to_string()))
 }
 
 async fn eth_block_number(id: Value, node: NodeHandle) -> JsonRpcResponse {

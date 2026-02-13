@@ -199,6 +199,15 @@ ETH_RPC_PORT=8545
 # DNS discovery server
 DNS_SERVER_URL=http://161.33.19.183:8053
 
+# Network selection (default: mainnet)
+# Uncomment to use testnet:
+# ASTRAM_NETWORK=testnet
+# Mainnet: Network ID Astram-mainnet, Chain ID 1
+# Testnet: Network ID Astram-testnet, Chain ID 8888
+# Optional overrides:
+# ASTRAM_NETWORK_ID=custom-network-id
+# ASTRAM_CHAIN_ID=12345
+
 # Data directory
 DATA_DIR=%USERPROFILE%\.Astram\data
 '@
@@ -248,6 +257,13 @@ $ReadmeContent = @'
 Astram stores blockchain data in: `%USERPROFILE%\.Astram`
 
 To reset the blockchain, delete this directory while no nodes are running.
+
+## Network Selection
+
+Edit `config/nodeSettings.conf` to choose a network:
+
+- Mainnet: Network ID Astram-mainnet, Chain ID 1
+- Testnet: Network ID Astram-testnet, Chain ID 8888
 
 ## Support
 

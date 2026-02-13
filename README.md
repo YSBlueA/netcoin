@@ -65,7 +65,7 @@ Run:
 
 ## Configuration
 
-On first run, the node creates a config file at:
+wallet-cli config (created on first run):
 
 - Linux/macOS: `~/.Astram/config.json`
 - Windows: `%APPDATA%\Astram\config.json`
@@ -75,20 +75,24 @@ Default values:
 ```json
 {
   "wallet_path": "<home>/.Astram/wallet.json",
-  "node_rpc_url": "http://127.0.0.1:19533",
-  "data_dir": "<home>/.Astram/data"
+  "node_rpc_url": "http://127.0.0.1:19533"
 }
 ```
 
-Useful env vars:
+Node settings are read from `config/nodeSettings.conf` in the release package or working directory.
 
-- `DNS_SERVER_URL`: DNS server base URL.
-- `NODE_PORT`: P2P port advertised to DNS.
+Network selection (mainnet/testnet):
+
+- Default is mainnet (no setting needed).
+- To use testnet, set `ASTRAM_NETWORK=testnet`.
+- Mainnet: Network ID `Astram-mainnet`, Chain ID `1`.
+- Testnet: Network ID `Astram-testnet`, Chain ID `8888`.
+- Optional overrides: `ASTRAM_NETWORK_ID`, `ASTRAM_CHAIN_ID`.
 
 ## Dashboard and Explorer
 
 - **Node Dashboard**: `http://127.0.0.1:19533`
-- **Explorer**: `http://127.0.0.1:8080`
+- **Explorer**: `http://127.0.0.1:3000`
 
 The launcher opens the dashboard a few seconds after starting the node.
 
