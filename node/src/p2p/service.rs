@@ -72,7 +72,7 @@ impl P2PService {
         // getheaders handler - load headers from DB
         let nh = node_handle.clone();
         p2p.set_on_getheaders(move |locator_hashes, _stop_hash| {
-            let state = nh.lock().unwrap();
+            let state = nh.read().unwrap();
             let mut headers = Vec::new();
 
             // Get chain tip
@@ -138,7 +138,7 @@ impl P2PService {
         p2p.set_on_block(move |block: block::Block| {
             let nh_async = nh2.clone();
             tokio::spawn(async move {
-                let mut state = nh_async.lock().unwrap();
+                let mut state = nh_async.write().unwrap();
 
                 // Check if this is a block we recently mined ourselves
                 if state.recently_mined_blocks.contains_key(&block.hash) {
@@ -260,7 +260,7 @@ impl P2PService {
             tokio::spawn(async move {
                 // Check and update state in a separate scope to ensure lock is released
                 let should_relay = {
-                    let mut state = nh_async.lock().unwrap();
+                    let mut state = nh_async.write().unwrap();
 
                     // Check if we've already seen this transaction (prevents loops)
                     if state.seen_tx.contains_key(&tx.txid) {
@@ -355,7 +355,7 @@ impl P2PService {
         p2p.set_on_getdata(move |peer_id, object_type, hashes| {
             use crate::p2p::messages::InventoryType;
             
-            let state = nh4.lock().unwrap();
+            let state = nh4.read().unwrap();
             let p2p_inner = p2p_clone.clone();
             
             match object_type {
@@ -472,7 +472,7 @@ impl P2PService {
             loop {
                 let mut locator = Vec::new();
                 {
-                    let state = node_handle.lock().unwrap();
+                    let state = node_handle.read().unwrap();
                     for b in state.blockchain.iter().rev().take(10) {
                         if let Ok(bytes) = hex::decode(&b.hash) {
                             locator.push(bytes);

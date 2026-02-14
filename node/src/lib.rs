@@ -8,7 +8,7 @@ use Astram_core::Blockchain;
 use Astram_core::block::Block;
 use Astram_core::transaction::Transaction;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 pub struct NodeState {
     pub bc: Blockchain,
@@ -52,7 +52,7 @@ pub const MAX_MEMPOOL_BYTES: usize = 300_000_000; // 300MB max mempool size
 pub const MEMPOOL_EXPIRY_TIME: i64 = 86400; // 24 hours - old transactions expire
 pub const MIN_RELAY_FEE_PER_BYTE: u64 = 1_000_000; // 1 Gwei per byte minimum
 
-pub type NodeHandle = Arc<Mutex<NodeState>>;
+pub type NodeHandle = Arc<RwLock<NodeState>>;
 
 impl NodeState {
     /// Security: Enforce memory block limit by removing oldest blocks

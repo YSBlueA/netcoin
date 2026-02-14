@@ -141,7 +141,7 @@ fn net_version(id: Value) -> JsonRpcResponse {
 }
 
 async fn eth_block_number(id: Value, node: NodeHandle) -> JsonRpcResponse {
-    let state = node.lock().unwrap();
+    let state = node.read().unwrap();
     let height = state.bc.get_all_blocks().map(|b| b.len()).unwrap_or(0);
     JsonRpcResponse::success(id, json!(format!("0x{:x}", height)))
 }
@@ -161,7 +161,7 @@ async fn eth_get_balance(
             // Keep 0x prefix - addresses are stored with 0x in DB
             let address = address.to_lowercase();
 
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             let balance = state
                 .bc
                 .get_address_balance_from_db(&address)
@@ -186,7 +186,7 @@ async fn eth_get_transaction_count(
             // Keep 0x prefix - addresses are stored with 0x in DB
             let address = address.to_lowercase();
 
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             let count = state
                 .bc
                 .get_address_transaction_count_from_db(&address)
@@ -271,7 +271,7 @@ async fn eth_send_raw_transaction(
             );
 
             // Add to mempool
-            let mut state = node.lock().unwrap();
+            let mut state = node.write().unwrap();
 
             // Check if already seen
             if state.seen_tx.contains_key(&Astram_tx.txid) {
@@ -620,7 +620,7 @@ async fn convert_eth_to_utxo_transaction(
 
     // Get UTXOs for sender
     let utxos = {
-        let state = node.lock().unwrap();
+        let state = node.read().unwrap();
         state
             .bc
             .get_utxos(&from_addr)
@@ -760,7 +760,7 @@ async fn eth_get_transaction_by_hash(
         if let Some(tx_hash) = params.get(0).and_then(|v| v.as_str()) {
             let tx_hash = tx_hash.strip_prefix("0x").unwrap_or(tx_hash);
 
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
 
             // Try to resolve Ethereum tx hash to Astram txid
             let Astram_txid = state
@@ -812,7 +812,7 @@ async fn eth_get_transaction_receipt(
 
             log::info!("[INFO] eth_getTransactionReceipt called for: 0x{}", tx_hash);
 
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
 
             // Try to find transaction by eth_hash first (recommended)
             match state
@@ -936,7 +936,7 @@ async fn eth_get_block_by_number(
 ) -> JsonRpcResponse {
     if let Some(params) = params {
         if let Some(block_param) = params.get(0).and_then(|v| v.as_str()) {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
 
             // Parse block number or handle "latest", "earliest", "pending"
             let block_number = match block_param {
@@ -1001,7 +1001,7 @@ async fn eth_get_block_by_hash(
             let block_hash = block_hash.strip_prefix("0x").unwrap_or(block_hash);
             let _full_tx = params.get(1).and_then(|v| v.as_bool()).unwrap_or(false);
 
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             if let Ok(blocks) = state.bc.get_all_blocks() {
                 if let Some((block_number, block)) = blocks
                     .iter()

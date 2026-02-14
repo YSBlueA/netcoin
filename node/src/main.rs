@@ -23,7 +23,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering as OtherOrdering;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::signal;
 use tokio::time::{Duration, sleep};
 
@@ -255,11 +255,11 @@ async fn main() {
         my_public_address: Arc::new(Mutex::new(None)),
     };
 
-    let node_handle = Arc::new(Mutex::new(node));
+    let node_handle = Arc::new(RwLock::new(node));
 
     // Set current blockchain height in P2P manager
     let my_height = {
-        let state = node_handle.lock().unwrap();
+        let state = node_handle.read().unwrap();
         if let Some(tip_hash) = &state.bc.chain_tip {
             if let Ok(Some(header)) = state.bc.load_header(tip_hash) {
                 header.index + 1
@@ -306,10 +306,11 @@ async fn main() {
         match signal::ctrl_c().await {
             Ok(()) => {
                 println!("\n[WARN] Shutdown signal received, cleaning up...");
+                println!("[INFO] Note: Connection errors during shutdown are expected and can be ignored");
                 shutdown_flag_clone.store(true, OtherOrdering::SeqCst);
 
                 // Cancel ongoing mining immediately
-                let state = node_for_shutdown.lock().unwrap();
+                let state = node_for_shutdown.read().unwrap();
                 state.mining_cancel_flag.store(true, OtherOrdering::SeqCst);
                 println!("[WARN] Mining cancellation requested...");
             }
@@ -333,7 +334,12 @@ async fn main() {
         let _ = handle.await;
     }
 
+    // Give time for active connections to close before aborting server
+    println!("[INFO] Closing active connections...");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
     // Abort HTTP server (it runs indefinitely)
+    // Note: This will cause connection errors for any open browser tabs - this is expected
     server_handle.abort();
     println!("[INFO] HTTP server stopped");
 
@@ -344,13 +350,17 @@ async fn main() {
     {
         println!("[INFO] Closing database...");
 
-        // Check Arc reference count
+        // Check Arc reference count (some refs may remain from async tasks)
         let arc_count = Arc::strong_count(&node_handle);
-        println!("[INFO] Arc strong references remaining: {}", arc_count);
+        if arc_count > 5 {
+            println!("[INFO] Arc references remaining: {} (may include async task handles)", arc_count);
+        } else {
+            println!("[INFO] Arc references remaining: {}", arc_count);
+        }
 
         // First, try to flush the DB while we still have a reference
         {
-            if let Ok(mut state) = node_handle.lock() {
+            if let Ok(mut state) = node_handle.write() {
                 // Flush WAL and compact
                 if let Err(e) = state.bc.db.flush() {
                     log::warn!("Failed to flush DB: {}", e);
@@ -376,7 +386,9 @@ async fn main() {
     // Final wait to ensure LOCK file is released by OS
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    println!("\n[OK] Astram node stopped gracefully");
+    println!("\n╔═══════════════════════════════════════╗");
+    println!("║  Astram node stopped gracefully ✓    ║");
+    println!("╚═══════════════════════════════════════╝");
 
     // Force process exit to ensure all resources are released
     std::process::exit(0);
@@ -482,7 +494,7 @@ async fn main() {
                 recently_mined_blocks: HashMap::new(),
                 my_public_address: Arc::new(Mutex::new(None)),
             };
-            let node_handle = Arc::new(Mutex::new(node));
+            let node_handle = Arc::new(RwLock::new(node));
 
             // set p2p handlers (headers provider + block handler) and periodic sync
             {
@@ -490,7 +502,7 @@ async fn main() {
                 let nh = node_handle.clone();
                 p2p_clone.set_on_getheaders(
                     move |locator_hashes: Vec<Vec<u8>>, _stop_hash: Option<Vec<u8>>| {
-                        let state = nh.lock().unwrap();
+                        let state = nh.read().unwrap();
                         let mut headers: Vec<BlockHeader> = state
                             .blockchain
                             .iter()
@@ -508,7 +520,7 @@ async fn main() {
                 p2p_clone2.set_on_block(move |block: block::Block| {
                     let nh_async = nh2.clone();
                     tokio::spawn(async move {
-                        let mut state = nh_async.lock().unwrap();
+                        let mut state = nh_async.write().unwrap();
                         match state.bc.validate_and_insert_block(&block) {
                             Ok(_) => {
                                 info!("Block added via p2p");
@@ -528,7 +540,7 @@ async fn main() {
                         // build locator from last N in-memory headers
                         let mut locator: Vec<Vec<u8>> = Vec::new();
                         {
-                            let state = nh_sync.lock().unwrap();
+                            let state = nh_sync.read().unwrap();
                             for b in state.blockchain.iter().rev().take(10) {
                                 if let Ok(bytes) = hex::decode(&b.hash) {
                                     locator.push(bytes);
@@ -565,7 +577,7 @@ async fn main() {
         recently_mined_blocks: HashMap::new(),
         my_public_address: Arc::new(Mutex::new(None)),
     };
-    let node_handle = Arc::new(Mutex::new(node));
+    let node_handle = Arc::new(RwLock::new(node));
 
     // set p2p handlers and periodic sync (for non-genesis startup)
     {
@@ -573,7 +585,7 @@ async fn main() {
         let nh = node_handle.clone();
         p2p_clone.set_on_getheaders(
             move |locator_hashes: Vec<Vec<u8>>, _stop_hash: Option<Vec<u8>>| {
-                let state = nh.lock().unwrap();
+                let state = nh.read().unwrap();
                 let mut headers: Vec<BlockHeader> = state
                     .blockchain
                     .iter()
@@ -591,7 +603,7 @@ async fn main() {
         p2p_clone2.set_on_block(move |block: block::Block| {
             let nh_async = nh2.clone();
             tokio::spawn(async move {
-                let mut state = nh_async.lock().unwrap();
+                let mut state = nh_async.write().unwrap();
                 match state.bc.validate_and_insert_block(&block) {
                     Ok(_) => {
                         info!("Block added via p2p");
@@ -609,7 +621,7 @@ async fn main() {
             loop {
                 let mut locator: Vec<Vec<u8>> = Vec::new();
                 {
-                    let state = nh_sync.lock().unwrap();
+                    let state = nh_sync.read().unwrap();
                     for b in state.blockchain.iter().rev().take(10) {
                         if let Ok(bytes) = hex::decode(&b.hash) {
                             locator.push(bytes);
@@ -662,7 +674,7 @@ async fn fetch_best_nodes_from_dns(
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     // Get my public address from state
     let my_address = {
-        let state = node_handle.lock().unwrap();
+        let state = node_handle.read().unwrap();
         state.my_public_address.lock().unwrap().clone()
     };
 
@@ -823,7 +835,7 @@ async fn register_with_dns(
     let node_port = settings.p2p_port;
 
     let height = {
-        let state = node_handle.lock().unwrap();
+        let state = node_handle.read().unwrap();
         if let Some(tip_hash) = &state.bc.chain_tip {
             if let Ok(Some(header)) = state.bc.load_header(tip_hash) {
                 header.index + 1
@@ -869,7 +881,7 @@ async fn register_with_dns(
 
         // Store the public IP address we were registered with
         {
-            let state = node_handle.lock().unwrap();
+            let state = node_handle.read().unwrap();
             *state.my_public_address.lock().unwrap() = Some(result.registered_address);
         }
 
@@ -888,7 +900,7 @@ async fn sync_blockchain(
     info!("[INFO] Starting blockchain synchronization...");
 
     let my_height = {
-        let state = node_handle.lock().unwrap();
+        let state = node_handle.read().unwrap();
         if let Some(tip_hash) = &state.bc.chain_tip {
             if let Ok(Some(header)) = state.bc.load_header(tip_hash) {
                 header.index + 1
@@ -936,7 +948,7 @@ async fn sync_blockchain(
         // Request headers from our current tip
         let mut locator_hashes = Vec::new();
         {
-            let state = node_handle.lock().unwrap();
+            let state = node_handle.read().unwrap();
             if let Some(tip_hash) = &state.bc.chain_tip {
                 if let Ok(bytes) = hex::decode(tip_hash) {
                     locator_hashes.push(bytes);
@@ -960,7 +972,7 @@ async fn sync_blockchain(
         sleep(Duration::from_secs(2)).await;
 
         let current_height = {
-            let state = node_handle.lock().unwrap();
+            let state = node_handle.read().unwrap();
             if let Some(tip_hash) = &state.bc.chain_tip {
                 if let Ok(Some(header)) = state.bc.load_header(tip_hash) {
                     header.index + 1
@@ -984,7 +996,7 @@ async fn sync_blockchain(
             if current_height < max_peer_height {
                 let mut locator_hashes = Vec::new();
                 {
-                    let state = node_handle.lock().unwrap();
+                    let state = node_handle.read().unwrap();
                     if let Some(tip_hash) = &state.bc.chain_tip {
                         if let Ok(bytes) = hex::decode(tip_hash) {
                             locator_hashes.push(bytes);
@@ -1067,7 +1079,7 @@ async fn start_services(
 
     // Connect to best nodes from DNS server
     let p2p_handle = {
-        let state = node_handle.lock().unwrap();
+        let state = node_handle.read().unwrap();
         state.p2p.clone()
     };
 
@@ -1175,7 +1187,7 @@ async fn start_services(
         log::warn!("Blockchain sync encountered error: {}", e);
     }
 
-    let nh: Arc<Mutex<NodeState>> = node_handle.clone();
+    let nh: NodeHandle = node_handle.clone();
     let http_addr = to_socket_addr(
         &settings.http_bind_addr,
         settings.http_port,
@@ -1222,23 +1234,24 @@ async fn mining_loop(
         if shutdown_flag.load(OtherOrdering::SeqCst) {
             info!("[WARN] Shutdown flag detected, stopping mining loop...");
             // Ensure cancel flag is set
-            let state = node_handle.lock().unwrap();
+            let state = node_handle.read().unwrap();
             state.mining_cancel_flag.store(true, OtherOrdering::SeqCst);
             break;
         }
 
         // Snapshot pending txs + mining params while holding the lock briefly
+        println!("[DEBUG] Mining: Attempting to acquire WRITE lock...");
         let (
             snapshot_txs,
             difficulty,
             prev_hash,
             index_snapshot,
             p2p_handle,
-            total_fees,
             cancel_flag,
             hashrate_shared,
         ) = {
-            let mut state = node_handle.lock().unwrap();
+            let mut state = node_handle.write().unwrap();
+            println!("[DEBUG] Mining: WRITE lock acquired");
 
             // Mark mining as active
             state.mining_active.store(true, OtherOrdering::SeqCst);
@@ -1282,9 +1295,30 @@ async fn mining_loop(
             // Update current difficulty in state
             *state.current_difficulty.lock().unwrap() = diff;
 
-            // Calculate total fees from pending transactions
+            // clear pending locally ??we'll requeue on failure
+            state.pending.clear();
+
+            (
+                txs_copy,
+                diff,
+                prev_hash,
+                next_index,
+                state.p2p.clone(),
+                state.mining_cancel_flag.clone(),
+                state.current_hashrate.clone(),
+            )
+        };
+        println!("[DEBUG] Mining: WRITE lock released");
+        // Write lock released - calculate fees OUTSIDE the lock
+
+        // Calculate total fees from pending transactions (with separate read lock for DB)
+        println!("[DEBUG] Mining: Attempting to acquire READ lock for fees...");
+        let total_fees = {
+            let state = node_handle.read().unwrap();
+            println!("[DEBUG] Mining: READ lock acquired for fees");
             let mut fee_sum = U256::zero();
-            for tx in &txs_copy {
+            
+            for tx in &snapshot_txs {
                 // Calculate fee: input_sum - output_sum
                 let mut input_sum = U256::zero();
                 let mut output_sum = U256::zero();
@@ -1312,21 +1346,11 @@ async fn mining_loop(
                     fee_sum += fee;
                 }
             }
-
-            // clear pending locally ??we'll requeue on failure
-            state.pending.clear();
-
-            (
-                txs_copy,
-                diff,
-                prev_hash,
-                next_index,
-                state.p2p.clone(),
-                fee_sum,
-                state.mining_cancel_flag.clone(),
-                state.current_hashrate.clone(),
-            )
+            
+            fee_sum
         };
+        println!("[DEBUG] Mining: READ lock released after fees");
+        // Read lock released
 
         // prepare block transactions: coinbase + pending
         // NOTE: we pass pending txs to consensus::mine_block_with_coinbase which will prepend coinbase
@@ -1409,7 +1433,7 @@ async fn mining_loop(
         match mined_block_res {
             Ok(block) => {
                 // Re-acquire lock to insert block atomically
-                let mut state = node_handle.lock().unwrap();
+                let mut state = node_handle.write().unwrap();
 
                 // Note: We do NOT modify the mined block's timestamp or hash
                 // because that would invalidate the PoW nonce that was just found.
@@ -1484,7 +1508,7 @@ async fn mining_loop(
                 }
 
                 // Mark mining as inactive and reset hashrate
-                let mut state = node_handle.lock().unwrap();
+                let mut state = node_handle.write().unwrap();
                 state.mining_active.store(false, OtherOrdering::SeqCst);
                 *state.current_hashrate.lock().unwrap() = 0.0;
 
@@ -1500,7 +1524,8 @@ async fn mining_loop(
         }
 
         // Wait before next cycle, but check shutdown flag frequently for quick response
-        for _ in 0..10 {
+        println!("[INFO] Waiting 3 seconds before next mining round...");
+        for _ in 0..3 {
             if shutdown_flag.load(OtherOrdering::SeqCst) {
                 info!("[WARN] Shutdown detected during sleep, exiting mining loop");
                 return;

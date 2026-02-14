@@ -11,6 +11,7 @@ use primitive_types::U256;
 use serde::Deserialize;
 use warp::Filter;
 use warp::{http::StatusCode, reply::with_status}; // bincode v2
+use std::collections::HashMap;
 use std::net::SocketAddr;
 /// run_server expects NodeHandle (Arc<Mutex<NodeState>>)
 pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
@@ -25,7 +26,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             let bincode_bytes = bincode::encode_to_vec(&state.blockchain, *BINCODE_CONFIG).unwrap();
             let encoded = general_purpose::STANDARD.encode(&bincode_bytes);
             log::info!("[INFO] Returning {} blocks from memory", state.blockchain.len());
@@ -41,7 +42,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             match state.bc.get_all_blocks() {
                 Ok(all_blocks) => {
                     let bincode_bytes =
@@ -74,7 +75,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
             let from_height = params.get("from").and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
             let to_height = params.get("to").and_then(|s| s.parse::<u64>().ok());
             
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             match state.bc.get_blocks_range(from_height, to_height) {
                 Ok(blocks) => {
                     let bincode_bytes = bincode::encode_to_vec(&blocks, *BINCODE_CONFIG).unwrap();
@@ -106,7 +107,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             let memory_count = state.blockchain.len();
             let db_count = state.bc.get_all_blocks().map(|b| b.len()).unwrap_or(0);
 
@@ -128,7 +129,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             let height = if let Some(tip_hash) = &state.bc.chain_tip {
                 if let Ok(Some(header)) = state.bc.load_header(tip_hash) {
                     header.index + 1
@@ -151,7 +152,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             let blocks = state.bc.get_all_blocks().map(|b| b.len()).unwrap_or(0);
             let transactions = state.bc.count_transactions().unwrap_or(0);
             let volume = state.bc.calculate_total_volume().unwrap_or(U256::zero());
@@ -173,54 +174,101 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|node: NodeHandle| async move {
-            let state = node.lock().unwrap();
-
-            // Get blockchain info
-            let block_height = state.bc.get_all_blocks().map(|b| b.len()).unwrap_or(0);
-            let memory_blocks = state.blockchain.len();
-            let pending_tx = state.pending.len();
-            let seen_tx = state.seen_tx.len();
-
-            // Get P2P network info
-            let peer_heights = state.p2p.get_peer_heights();
-            let connected_peers = peer_heights.len();
-            let my_height = state.p2p.get_my_height();
-
-            // Get chain tip hash
-            let chain_tip = state
-                .bc
-                .chain_tip
-                .as_ref()
-                .map(|hash| hex::encode(hash))
-                .unwrap_or_else(|| "none".to_string());
-
-            // Get mining info
-            let is_mining = state.mining_active.load(std::sync::atomic::Ordering::SeqCst);
-            let current_difficulty = *state.current_difficulty.lock().unwrap();
-            let hashrate = *state.current_hashrate.lock().unwrap();
-            let blocks_mined_count = state.blocks_mined.load(std::sync::atomic::Ordering::SeqCst);
+            log::debug!("[DEBUG] /status: Starting...");
             
-            // Calculate uptime
-            let uptime_secs = state.node_start_time.elapsed().as_secs();
+            // Get P2P data FIRST (before NodeState lock) to avoid nested lock contention
+            // Use spawn_blocking to prevent P2P locks from blocking the async runtime
+            let p2p_clone = {
+                log::debug!("[DEBUG] /status: Acquiring NodeState READ lock to clone P2P...");
+                let state = node.read().unwrap();
+                log::debug!("[DEBUG] /status: NodeState READ lock acquired, cloning P2P manager...");
+                let p2p = state.p2p.clone();
+                log::debug!("[DEBUG] /status: P2P manager cloned, releasing NodeState lock");
+                p2p
+            };
+            
+            log::debug!("[DEBUG] /status: Spawning blocking task for P2P methods...");
+            let p2p_result = tokio::time::timeout(
+                std::time::Duration::from_millis(500), // 500ms timeout
+                tokio::task::spawn_blocking(move || {
+                    log::debug!("[DEBUG] /status BLOCKING: Started, calling get_peer_heights()...");
+                    let peer_heights = p2p_clone.get_peer_heights();
+                    log::debug!("[DEBUG] /status BLOCKING: get_peer_heights() done, calling get_my_height()...");
+                    let my_height = p2p_clone.get_my_height();
+                    log::debug!("[DEBUG] /status BLOCKING: get_my_height() done, calling get_subnet_diversity_stats()...");
+                    let (s24, s16) = p2p_clone.get_subnet_diversity_stats();
+                    log::debug!("[DEBUG] /status BLOCKING: All P2P methods completed");
+                    (peer_heights, my_height, s24, s16)
+                })
+            ).await;
+            
+            let (peer_heights, my_height, subnet_24_count, subnet_16_count) = match p2p_result {
+                Ok(Ok(data)) => {
+                    log::debug!("[DEBUG] /status: P2P data collection succeeded");
+                    data
+                }
+                Ok(Err(e)) => {
+                    log::warn!("[WARN] /status: P2P blocking task panicked: {:?}, using defaults", e);
+                    (HashMap::new(), 0, 0, 0)
+                }
+                Err(_) => {
+                    log::warn!("[WARN] /status: P2P data collection TIMED OUT after 500ms, using defaults");
+                    (HashMap::new(), 0, 0, 0)
+                }
+            };
+            
+            log::debug!("[DEBUG] /status: Attempting to acquire READ lock...");
+            // Quick snapshot of blockchain data with ONE read lock - no nested locks!
+            let (
+                memory_blocks,
+                pending_tx,
+                seen_tx,
+                chain_tip,
+                is_mining,
+                current_difficulty,
+                hashrate,
+                blocks_mined_count,
+                uptime_secs,
+                miner_address,
+            ) = {
+                let state = node.read().unwrap();
+                log::debug!("[DEBUG] /status: READ lock acquired (snapshot)");
+                
+                let wallet_addr = state.miner_address.lock().unwrap().clone();
+                let diff = *state.current_difficulty.lock().unwrap();
+                let hash = *state.current_hashrate.lock().unwrap();
+                
+                (
+                    state.blockchain.len(),
+                    state.pending.len(),
+                    state.seen_tx.len(),
+                    state.bc.chain_tip.as_ref().map(|h| hex::encode(h)).unwrap_or_else(|| "none".to_string()),
+                    state.mining_active.load(std::sync::atomic::Ordering::Relaxed),
+                    diff,
+                    hash,
+                    state.blocks_mined.load(std::sync::atomic::Ordering::Relaxed),
+                    state.node_start_time.elapsed().as_secs(),
+                    wallet_addr,
+                )
+            };
+            log::debug!("[DEBUG] /status: READ lock released (snapshot)");
+            // Lock released immediately - do expensive DB work outside lock
+            
+            // Get wallet balance OUTSIDE the lock (DB operation)
+            log::debug!("[DEBUG] /status: Attempting to acquire READ lock for balance...");
+            let wallet_balance = {
+                let state = node.read().unwrap();
+                log::debug!("[DEBUG] /status: READ lock acquired for balance");
+                state.bc.get_address_balance_from_db(&miner_address).unwrap_or(U256::zero())
+            };
+            log::debug!("[DEBUG] /status: READ lock released after balance");
 
-            // Get wallet info
-            let miner_address = state.miner_address.lock().unwrap().clone();
-            let wallet_balance = state.bc.get_address_balance_from_db(&miner_address).unwrap_or(U256::zero());
+            let connected_peers = peer_heights.len();
+            let block_height = my_height;
 
-            // Get validation statistics
+            // Get validation statistics (lock-free)
             let validation_stats = Astram_core::security::VALIDATION_STATS.get_stats();
             let total_failures: u64 = validation_stats.iter().map(|(_, count)| count).sum();
-
-            // Get subnet diversity metrics
-            let (subnet_24_count, subnet_16_count) = state.p2p.get_subnet_diversity_stats();
-
-            log::info!(
-                "Status requested - Height: {}, Peers: {}, Pending TX: {}, Mining: {}",
-                block_height,
-                connected_peers,
-                pending_tx,
-                is_mining
-            );
 
             Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
                 "node": {
@@ -273,7 +321,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             let bincode_bytes = bincode::encode_to_vec(&state.blockchain, *BINCODE_CONFIG).unwrap();
             let encoded = general_purpose::STANDARD.encode(&bincode_bytes);
             Ok::<_, warp::Rejection>(warp::reply::json(&serde_json::json!({
@@ -309,7 +357,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
             }
 
             // lock
-            let mut state = node.lock().unwrap();
+            let mut state = node.write().unwrap();
 
             // Duplicate protection
             if state.seen_tx.contains_key(&tx.txid) {
@@ -447,7 +495,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
                 }
             };
 
-            let mut state = node.lock().unwrap();
+            let mut state = node.write().unwrap();
 
             // Duplicate check
             if state.seen_tx.contains_key(&tx.txid) {
@@ -511,7 +559,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             let txs = state.pending.clone();
 
             let mut total_fees = U256::zero();
@@ -589,7 +637,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
                 }
             };
 
-            let mut state = node.lock().unwrap();
+            let mut state = node.write().unwrap();
             match state.bc.validate_and_insert_block(&block) {
                 Ok(_) => {
                     state.blockchain.push(block.clone());
@@ -632,7 +680,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             let height = state
                 .blockchain
                 .last()
@@ -650,7 +698,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|address: String, node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             match state.bc.get_address_balance_from_db(&address) {
                 Ok(bal) => {
                     log::info!("[INFO] Balance lookup success: {} -> {}", address, bal);
@@ -671,7 +719,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|address: String, node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             match state.bc.get_utxos(&address) {
                 Ok(list) => Ok::<_, warp::Rejection>(warp::reply::json(&list)),
                 Err(e) => {
@@ -688,7 +736,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and_then(|address: String, node: NodeHandle| async move {
             // Normalize address to lowercase for consistent lookup
             let address = address.to_lowercase();
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
 
             let balance = state
                 .bc
@@ -731,7 +779,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|txid: String, node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
 
             match state.bc.get_transaction(&txid) {
                 Ok(Some((tx, height))) => {
@@ -771,7 +819,7 @@ pub async fn run_server(node: NodeHandle, bind_addr: SocketAddr) {
         .and(warp::get())
         .and(node_filter.clone())
         .and_then(|eth_hash: String, node: NodeHandle| async move {
-            let state = node.lock().unwrap();
+            let state = node.read().unwrap();
             // Strip 0x prefix if present
             let eth_hash = eth_hash.strip_prefix("0x").unwrap_or(&eth_hash);
             
