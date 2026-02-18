@@ -24,8 +24,8 @@
             class="table-row"
           >
             <td class="tx-type">
-              <span v-if="tx.from === 'Block_Reward'" class="tx-badge coinbase" title="Mining Reward">?ï¸</span>
-              <span v-else class="tx-badge transfer" title="Transfer">?’¸</span>
+              <span v-if="tx.from === 'Block_Reward'" class="tx-badge coinbase" title="Mining Reward">â›ï¸</span>
+              <span v-else class="tx-badge transfer" title="Transfer">ğŸ’¸</span>
             </td>
             <td class="hash">{{ truncateHash(tx.hash) }}</td>
             <td class="address">{{ truncateAddress(tx.from) }}</td>

@@ -553,13 +553,6 @@ impl Blockchain {
             ));
         }
 
-        log::debug!(
-            "MTP validation passed: block_time={}, median={}, samples={}",
-            block.header.timestamp,
-            median,
-            timestamps.len()
-        );
-
         Ok(())
     }
 

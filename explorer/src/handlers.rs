@@ -1,4 +1,5 @@
 use crate::db::ExplorerDB;
+use crate::rpc::NodeRpcClient;
 use crate::state::{AddressInfo, BlockInfo, BlockchainStats, TransactionInfo};
 use actix_web::{HttpResponse, web};
 use chrono::Utc;
@@ -48,9 +49,11 @@ pub async fn get_blocks(
 ) -> HttpResponse {
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
+    log::info!("📦 API: Fetching blocks - page: {}, limit: {}", page, limit);
 
     match db.get_blocks(page, limit) {
         Ok(blocks) => {
+            log::info!("✅ API: Retrieved {} blocks from DB", blocks.len());
             let total = db.get_block_count().unwrap_or(0);
             HttpResponse::Ok().json(serde_json::json!({
                 "blocks": blocks,
@@ -108,9 +111,11 @@ pub async fn get_transactions(
 ) -> HttpResponse {
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
+    log::info!("💾 API: Fetching transactions - page: {}, limit: {}", page, limit);
 
     match db.get_transactions(page, limit) {
         Ok(transactions) => {
+            log::info!("✅ API: Retrieved {} transactions from DB", transactions.len());
             let total = db.get_transaction_count().unwrap_or(0);
             HttpResponse::Ok().json(serde_json::json!({
                 "transactions": transactions,
@@ -183,16 +188,10 @@ pub async fn get_address_info(
 
     match db.get_address_info(&address) {
         Ok(Some(info)) => {
-            log::info!(
-                "✅ Found cached address info - balance: {}, tx_count: {}",
-                info.balance,
-                info.transaction_count
-            );
             HttpResponse::Ok().json(info)
         }
         Ok(None) => {
             // 캐시되지 않은 경우, 새로 계산
-            log::info!("⚠️ Address info not cached, calculating...");
             match db.update_address_info(&address) {
                 Ok(info) => HttpResponse::Ok().json(info),
                 Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
@@ -202,6 +201,18 @@ pub async fn get_address_info(
         }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Database error: {}", e)
+        })),
+    }
+}
+
+// Node status proxy
+pub async fn get_node_status(
+    rpc: web::Data<Arc<NodeRpcClient>>,
+) -> HttpResponse {
+    match rpc.fetch_status().await {
+        Ok(status) => HttpResponse::Ok().json(status),
+        Err(e) => HttpResponse::ServiceUnavailable().json(serde_json::json!({
+            "message": e
         })),
     }
 }

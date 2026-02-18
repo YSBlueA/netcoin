@@ -54,6 +54,7 @@ pub fn mine_block_with_coinbase(
     cancel_flag: Arc<AtomicBool>,
     hashrate: Option<Arc<std::sync::Mutex<f64>>>,
 ) -> Result<Block> {
+    println!("[DEBUG] Mining: mine_block_with_coinbase called with difficulty={}", difficulty);
     let coinbase = Transaction::coinbase(miner_addr, reward).with_hashes();
     let mut all_txs = vec![coinbase];
     all_txs.extend(txs);
@@ -75,6 +76,8 @@ pub fn mine_block_with_coinbase(
     let mining_start = std::time::Instant::now();
     let mut last_hashrate_update = mining_start;
     let mut hashes_since_update: u64 = 0;
+    
+    println!("[DEBUG] Mining: Entering mining loop, target_zeros={}", target_prefix.len());
 
     // ⛏️ CPU mining loop
     loop {
@@ -83,14 +86,34 @@ pub fn mine_block_with_coinbase(
             return Err(anyhow!("Mining cancelled due to new peer block"));
         }
 
+        // Log first iteration only
+        if nonce == 0 {
+            println!("[DEBUG] Mining loop: STARTING iteration with nonce=0");
+        }
+
         header.nonce = nonce;
         let hash = compute_header_hash(&header)?;
+        
         if hash.starts_with(&target_prefix) {
+            println!("[DEBUG] Mining: FOUND valid hash! nonce={}, hash_prefix={}", nonce, &hash[..20]);
+            // Update final hashrate before returning
+            let final_elapsed = last_hashrate_update.elapsed();
+            if final_elapsed.as_secs_f64() > 0.0 {
+                let final_rate = hashes_since_update as f64 / final_elapsed.as_secs_f64();
+                if let Some(ref hr) = hashrate {
+                    if let Ok(mut hr_lock) = hr.try_lock() {
+                        *hr_lock = final_rate;
+                    }
+                }
+            }
+            
+            println!("[DEBUG] Mining: Creating block with {} transactions", all_txs.len());
             let block = Block {
                 header: header.clone(),
                 transactions: all_txs,
                 hash,
             };
+            println!("[DEBUG] Mining: Returning mined block!");
             return Ok(block);
         }
 
@@ -103,9 +126,9 @@ pub fn mine_block_with_coinbase(
                 return Err(anyhow!("Mining cancelled"));
             }
 
-            // Update hashrate every second (approximately)
+            // Update hashrate more frequently (every 100ms) for more accurate reporting
             let elapsed = last_hashrate_update.elapsed();
-            if elapsed.as_secs() >= 1 {
+            if elapsed.as_millis() >= 100 {
                 let current_hashrate = hashes_since_update as f64 / elapsed.as_secs_f64();
 
                 // Update shared hashrate if provided
@@ -115,29 +138,8 @@ pub fn mine_block_with_coinbase(
                     }
                 }
 
-                log::debug!(
-                    "⛏️  Current hashrate: {:.2} H/s (difficulty: {})",
-                    current_hashrate,
-                    difficulty
-                );
                 hashes_since_update = 0;
                 last_hashrate_update = std::time::Instant::now();
-            }
-
-            // Show mining progress every 1M hashes
-            if nonce % 1_000_000 == 0 {
-                let total_duration = mining_start.elapsed().as_secs_f64();
-                let avg_hashrate = if total_duration > 0.0 {
-                    nonce as f64 / total_duration
-                } else {
-                    0.0
-                };
-                log::debug!(
-                    "⛏️  Mining progress: {} hashes tried, avg {:.2} H/s (difficulty: {})",
-                    nonce,
-                    avg_hashrate,
-                    difficulty
-                );
             }
         }
     }

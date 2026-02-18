@@ -13,7 +13,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-const DEFAULT_BATCH_SIZE: u64 = 1_000_000;
+const DEFAULT_BATCH_SIZE: u64 = 50_000_000; // 50M hashes per batch for better GPU utilization
 const THREADS_PER_BLOCK: u32 = 256;
 const MAX_BLOCKS: u32 = 4096;
 
@@ -140,7 +140,8 @@ pub fn mine_block_with_coinbase_cuda(
         hashes_since_update = hashes_since_update.saturating_add(batch_size);
 
         let elapsed = last_rate_update.elapsed();
-        if elapsed.as_secs() >= 1 {
+        // Update hashrate more frequently (every 100ms) for more accurate reporting
+        if elapsed.as_millis() >= 100 {
             let rate = hashes_since_update as f64 / elapsed.as_secs_f64();
             if let Some(ref hr) = hashrate {
                 if let Ok(mut hr_lock) = hr.try_lock() {
@@ -169,6 +170,17 @@ pub fn mine_block_with_coinbase_cuda(
             }
             if !cpu_hash_hex.starts_with(&"0".repeat(difficulty as usize)) {
                 return Err(anyhow!("GPU found nonce did not satisfy target"));
+            }
+
+            // Update final hashrate before returning
+            let final_elapsed = last_rate_update.elapsed();
+            if final_elapsed.as_secs_f64() > 0.0 {
+                let final_rate = hashes_since_update as f64 / final_elapsed.as_secs_f64();
+                if let Some(ref hr) = hashrate {
+                    if let Ok(mut hr_lock) = hr.try_lock() {
+                        *hr_lock = final_rate;
+                    }
+                }
             }
 
             header.nonce = nonce;

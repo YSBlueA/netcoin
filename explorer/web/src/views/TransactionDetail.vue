@@ -261,7 +261,6 @@ export default {
       if (confirmations < 6) return `${confirmations} (Low Confidence)`;
       return `${confirmations} (Confirmed)`;
     },
-    },
     goToTransactions() {
       this.$router.push("/transactions");
     },

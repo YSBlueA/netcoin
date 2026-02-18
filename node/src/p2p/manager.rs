@@ -197,7 +197,13 @@ impl PeerManager {
         };
 
         // Count existing peers in same subnets
+        info!("[P2P] 🔒 check_subnet_diversity: acquiring peer_ips lock...");
+        let lock_start = std::time::Instant::now();
         let peer_ips = self.peer_ips.lock();
+        let lock_duration = lock_start.elapsed();
+        if lock_duration.as_micros() > 100 {
+            info!("[P2P] ✅ check_subnet_diversity: peer_ips lock acquired (took {:?})", lock_duration);
+        }
         let mut subnet_24_count = 0;
         let mut subnet_16_count = 0;
 
@@ -241,7 +247,13 @@ impl PeerManager {
     pub fn get_subnet_diversity_stats(&self) -> (usize, usize) {
         use std::collections::HashSet;
 
+        info!("[P2P] 🔒 get_subnet_diversity_stats: acquiring peer_ips lock...");
+        let lock_start = std::time::Instant::now();
         let peer_ips = self.peer_ips.lock();
+        let lock_duration = lock_start.elapsed();
+        if lock_duration.as_micros() > 100 {
+            info!("[P2P] ✅ get_subnet_diversity_stats: peer_ips lock acquired (took {:?})", lock_duration);
+        }
         let mut subnet_24s = HashSet::new();
         let mut subnet_16s = HashSet::new();
 
@@ -288,24 +300,90 @@ impl PeerManager {
         // Security: Extract IP address and check connection limit
         let peer_ip = peer_id.split(':').next().unwrap_or("").to_string();
 
-        // Check if this IP already has too many connections
-        let peer_count = self
-            .peer_ips
-            .lock()
-            .get(&peer_ip)
-            .map(|peers| peers.len())
-            .unwrap_or(0);
+        info!("[P2P] 🔒 handle_incoming {}: acquiring peer_ips lock for validation...", peer_id);
+        let validation_start = std::time::Instant::now();
+        
+        // OPTIMIZATION: Lock peer_ips ONCE and perform all checks together
+        let (peer_count, diversity_ok, diversity_reason, subnet_24_count, subnet_16_count) = {
+            let peer_ips_guard = self.peer_ips.lock();
+            let lock_duration = validation_start.elapsed();
+            info!("[P2P] ✅ handle_incoming {}: peer_ips lock acquired (took {:?})", peer_id, lock_duration);
+            
+            // 1. Check if this IP already has too many connections
+            let peer_count = peer_ips_guard
+                .get(&peer_ip)
+                .map(|peers| peers.len())
+                .unwrap_or(0);
 
-        if peer_count >= MAX_PEERS_PER_IP {
-            warn!(
-                "[WARN] Rejecting connection from {} - IP {} already has {} connections (max: {})",
-                peer_id, peer_ip, peer_count, MAX_PEERS_PER_IP
-            );
-            return Ok(()); // Silently drop connection
-        }
+            if peer_count >= MAX_PEERS_PER_IP {
+                warn!(
+                    "[WARN] Rejecting connection from {} - IP {} already has {} connections (max: {})",
+                    peer_id, peer_ip, peer_count, MAX_PEERS_PER_IP
+                );
+                return Ok(()); // Silently drop connection
+            }
 
-        // Security: Check subnet diversity to prevent Eclipse attacks
-        let (diversity_ok, diversity_reason) = self.check_subnet_diversity(&peer_ip);
+            // 2. Check subnet diversity (inline to avoid second lock)
+            use std::collections::HashSet;
+            let (diversity_ok, diversity_reason) = match Self::get_subnet_prefixes(&peer_ip) {
+                None => (true, None), // Can't parse, allow
+                Some((subnet_24, subnet_16)) => {
+                    let mut subnet_24_count = 0;
+                    let mut subnet_16_count = 0;
+
+                    for existing_ip in peer_ips_guard.keys() {
+                        if let Some((existing_24, existing_16)) = Self::get_subnet_prefixes(existing_ip) {
+                            if existing_24 == subnet_24 {
+                                subnet_24_count += 1;
+                            }
+                            if existing_16 == subnet_16 {
+                                subnet_16_count += 1;
+                            }
+                        }
+                    }
+
+                    // Check /24 subnet limit
+                    if subnet_24_count >= MAX_PEERS_PER_SUBNET_24 {
+                        (
+                            false,
+                            Some(format!(
+                                "Too many peers from subnet {}.0/24 ({} peers, max: {})",
+                                subnet_24, subnet_24_count, MAX_PEERS_PER_SUBNET_24
+                            )),
+                        )
+                    }
+                    // Check /16 subnet limit
+                    else if subnet_16_count >= MAX_PEERS_PER_SUBNET_16 {
+                        (
+                            false,
+                            Some(format!(
+                                "Too many peers from subnet {}.0/16 ({} peers, max: {})",
+                                subnet_16, subnet_16_count, MAX_PEERS_PER_SUBNET_16
+                            )),
+                        )
+                    } else {
+                        (true, None)
+                    }
+                }
+            };
+
+            // 3. Get overall subnet diversity stats (inline to avoid third lock)
+            let mut subnet_24s = HashSet::new();
+            let mut subnet_16s = HashSet::new();
+
+            for ip in peer_ips_guard.keys() {
+                if let Some((subnet_24, subnet_16)) = Self::get_subnet_prefixes(ip) {
+                    subnet_24s.insert(subnet_24);
+                    subnet_16s.insert(subnet_16);
+                }
+            }
+
+            let total_validation = validation_start.elapsed();
+            info!("[P2P] ✅ handle_incoming {}: validation completed (total {:?})", peer_id, total_validation);
+            
+            (peer_count, diversity_ok, diversity_reason, subnet_24s.len(), subnet_16s.len())
+        }; // peer_ips lock released here
+
         if !diversity_ok {
             warn!(
                 "[WARN] Rejecting connection from {} - subnet diversity violation: {}",
@@ -315,7 +393,6 @@ impl PeerManager {
             return Ok(()); // Silently drop connection
         }
 
-        let (subnet_24_count, subnet_16_count) = self.get_subnet_diversity_stats();
         info!(
             "[INFO] Accepting connection from {} ({} existing from IP, diversity: {}/24 subnets, {}/16 subnets)",
             peer_id, peer_count, subnet_24_count, subnet_16_count
@@ -356,12 +433,20 @@ impl PeerManager {
         self.peers.lock().insert(peer_id_clone.clone(), tx.clone());
 
         // Security: Track IP address for connection limiting
+        info!("[P2P] 🔒 spawn_peer_loop {}: acquiring peer_ips lock to register...", peer_id_clone);
+        let lock_start = std::time::Instant::now();
         let peer_ip = peer_id_clone.split(':').next().unwrap_or("").to_string();
-        self.peer_ips
-            .lock()
-            .entry(peer_ip.clone())
-            .or_insert_with(Vec::new)
-            .push(peer_id_clone.clone());
+        {
+            let mut peer_ips_guard = self.peer_ips.lock();
+            let lock_duration = lock_start.elapsed();
+            if lock_duration.as_micros() > 100 {
+                info!("[P2P] ✅ spawn_peer_loop {}: peer_ips lock acquired (took {:?})", peer_id_clone, lock_duration);
+            }
+            peer_ips_guard
+                .entry(peer_ip.clone())
+                .or_insert_with(Vec::new)
+                .push(peer_id_clone.clone());
+        } // peer_ips lock released
 
         // drop local tx so the only remaining sender is the one in peers map
         drop(tx);
@@ -474,14 +559,24 @@ impl PeerManager {
                 }
                 self.peers.lock().remove(&peer_id_clone2);
 
-                // Security: Remove from IP tracking
-                let peer_ip = peer_id_clone2.split(':').next().unwrap_or("").to_string();
-                if let Some(peer_list) = self.peer_ips.lock().get_mut(&peer_ip) {
-                    peer_list.retain(|id| id != &peer_id_clone2);
-                    if peer_list.is_empty() {
-                        self.peer_ips.lock().remove(&peer_ip);
+                // Security: Remove from IP tracking (OPTIMIZED: single lock)
+                info!("[P2P] 🔒 cleanup {}: acquiring peer_ips lock for removal...", peer_id_clone2);
+                let lock_start = std::time::Instant::now();
+                {
+                    let peer_ip = peer_id_clone2.split(':').next().unwrap_or("").to_string();
+                    let mut peer_ips_guard = self.peer_ips.lock();
+                    let lock_duration = lock_start.elapsed();
+                    if lock_duration.as_micros() > 100 {
+                        info!("[P2P] ✅ cleanup {}: peer_ips lock acquired (took {:?})", peer_id_clone2, lock_duration);
                     }
-                }
+                    
+                    if let Some(peer_list) = peer_ips_guard.get_mut(&peer_ip) {
+                        peer_list.retain(|id| id != &peer_id_clone2);
+                        if peer_list.is_empty() {
+                            peer_ips_guard.remove(&peer_ip);
+                        }
+                    }
+                } // peer_ips lock released
 
                 let _ = write_fut.await; // await the remaining writer
             }
@@ -492,14 +587,24 @@ impl PeerManager {
                 }
                 self.peers.lock().remove(&peer_id_clone2);
 
-                // Security: Remove from IP tracking
-                let peer_ip = peer_id_clone2.split(':').next().unwrap_or("").to_string();
-                if let Some(peer_list) = self.peer_ips.lock().get_mut(&peer_ip) {
-                    peer_list.retain(|id| id != &peer_id_clone2);
-                    if peer_list.is_empty() {
-                        self.peer_ips.lock().remove(&peer_ip);
+                // Security: Remove from IP tracking (OPTIMIZED: single lock)
+                info!("[P2P] 🔒 cleanup {}: acquiring peer_ips lock for removal...", peer_id_clone2);
+                let lock_start = std::time::Instant::now();
+                {
+                    let peer_ip = peer_id_clone2.split(':').next().unwrap_or("").to_string();
+                    let mut peer_ips_guard = self.peer_ips.lock();
+                    let lock_duration = lock_start.elapsed();
+                    if lock_duration.as_micros() > 100 {
+                        info!("[P2P] ✅ cleanup {}: peer_ips lock acquired (took {:?})", peer_id_clone2, lock_duration);
                     }
-                }
+                    
+                    if let Some(peer_list) = peer_ips_guard.get_mut(&peer_ip) {
+                        peer_list.retain(|id| id != &peer_id_clone2);
+                        if peer_list.is_empty() {
+                            peer_ips_guard.remove(&peer_ip);
+                        }
+                    }
+                } // peer_ips lock released
 
                 let _ = read_fut.await; // await the remaining reader
             }
@@ -618,15 +723,28 @@ impl PeerManager {
                 }
 
                 // Store peer info
+                let lock_start = std::time::Instant::now();
                 self.peer_heights
                     .lock()
                     .insert(peer_id.clone(), info.height);
+                let heights_duration = lock_start.elapsed();
+                
+                let lock_start = std::time::Instant::now();
                 self.peer_handshakes.lock().insert(peer_id.clone(), info);
+                let handshakes_duration = lock_start.elapsed();
+                
+                if heights_duration.as_micros() > 100 || handshakes_duration.as_micros() > 100 {
+                    info!("[P2P] 🔒 HandshakeAck: peer_heights lock {:?}, peer_handshakes lock {:?}", heights_duration, handshakes_duration);
+                }
             }
 
             Version { version, height } => {
                 info!("{} sent version v{} height {}", peer_id, version, height);
+                let lock_start = std::time::Instant::now();
                 self.peer_heights.lock().insert(peer_id.clone(), height);
+                if lock_start.elapsed().as_micros() > 100 {
+                    info!("[P2P] 🔒 Version: peer_heights lock took {:?}", lock_start.elapsed());
+                }
 
                 if let Some(tx) = self.peers.lock().get(&peer_id) {
                     let _ = tx.send(VerAck);
@@ -730,16 +848,37 @@ impl PeerManager {
             }
 
             Block { block } => {
-                info!("{} sent block {}", peer_id, block.hash);
-                if let Some(cb) = &*self.on_block.lock() {
-                    (cb)(block);
+                info!("[P2P] 📦 {} sent block #{} {}", peer_id, block.header.index, block.hash);
+                let callback_start = std::time::Instant::now();
+                let lock_start = std::time::Instant::now();
+                let cb = self.on_block.lock().clone();
+                let lock_duration = lock_start.elapsed();
+                
+                if let Some(cb) = cb {
+                    if lock_duration.as_micros() > 100 {
+                        info!("[P2P] 🔒 Block callback: on_block lock took {:?}", lock_duration);
+                    }
+                    (cb)(block.clone());
+                    info!("[P2P] ✅ Block callback completed in {:?}", callback_start.elapsed());
                 }
             }
 
             Tx { tx } => {
-                info!("{} sent transaction {}", peer_id, tx.txid);
-                if let Some(cb) = &*self.on_tx.lock() {
-                    (cb)(tx);
+                info!("[P2P] 💸 {} sent transaction {}", peer_id, hex::encode(&tx.txid[..8]));
+                let callback_start = std::time::Instant::now();
+                let lock_start = std::time::Instant::now();
+                let cb = self.on_tx.lock().clone();
+                let lock_duration = lock_start.elapsed();
+                
+                if let Some(cb) = cb {
+                    if lock_duration.as_micros() > 100 {
+                        info!("[P2P] 🔒 TX callback: on_tx lock took {:?}", lock_duration);
+                    }
+                    (cb)(tx.clone());
+                    let total_duration = callback_start.elapsed();
+                    if total_duration.as_millis() > 1 {
+                        info!("[P2P] ✅ TX callback completed in {:?}", total_duration);
+                    }
                 }
             }
 
@@ -750,17 +889,28 @@ impl PeerManager {
     }
 
     pub fn broadcast_inv(&self, object_type: InventoryType, hashes: Vec<Vec<u8>>) {
+        info!("[P2P] 🔒 broadcast_inv: acquiring peers lock...");
+        let lock_start = std::time::Instant::now();
         let peers = self.peers.lock().clone();
+        let lock_duration = lock_start.elapsed();
+        info!("[P2P] ✅ broadcast_inv: peers lock acquired (took {:?}), {} peers", lock_duration, peers.len());
+        
         for (_id, tx) in peers {
             let _ = tx.send(P2pMessage::Inv {
                 object_type: object_type.clone(),
                 hashes: hashes.clone(),
             });
         }
+        info!("[P2P] ✅ broadcast_inv: completed (total {:?})", lock_start.elapsed());
     }
 
     pub fn send_to_peer(&self, peer_id: &PeerId, msg: P2pMessage) {
+        let lock_start = std::time::Instant::now();
         if let Some(tx) = self.peers.lock().get(peer_id) {
+            let lock_duration = lock_start.elapsed();
+            if lock_duration.as_micros() > 100 {
+                info!("[P2P] 🔒 send_to_peer: lock took {:?}", lock_duration);
+            }
             let _ = tx.send(msg);
         }
     }
@@ -790,14 +940,13 @@ impl PeerManager {
     }
 
     pub async fn dns_seed_lookup(&self) -> anyhow::Result<Vec<String>> {
-        use tokio::net::lookup_host;
-        let seeds = vec![
+        let _seeds = vec![
             "seed1.Astram.org:19533",
             "seed2.Astram.org:19533",
             "dnsseed.Astram.io:19533",
         ];
 
-        let mut peers = Vec::new();
+        let peers = Vec::new();
         /*
                 /// TODO : we need domain lookup in parallel
                 for seed in seeds {
@@ -816,22 +965,34 @@ impl PeerManager {
 
     /// Broadcast a block to all connected peers (fire-and-forget)
     pub async fn broadcast_block(&self, block: &block::Block) {
+        info!("[P2P] 🔒 broadcast_block #{}: acquiring peers lock...", block.header.index);
+        let lock_start = std::time::Instant::now();
         let peers = self.peers.lock().clone();
+        let lock_duration = lock_start.elapsed();
+        info!("[P2P] ✅ broadcast_block #{}: peers lock acquired (took {:?}), {} peers", block.header.index, lock_duration, peers.len());
+        
         for (_id, tx) in peers {
             // clone the block for each peer
             let _ = tx.send(P2pMessage::Block {
                 block: block.clone(),
             });
         }
+        info!("[P2P] ✅ broadcast_block #{}: completed (total {:?})", block.header.index, lock_start.elapsed());
     }
 
     /// Broadcast a transaction to all connected peers (async so callers can `.await`)
     pub async fn broadcast_tx(&self, tx_obj: &Transaction) {
+        info!("[P2P] 🔒 broadcast_tx {}: acquiring peers lock...", hex::encode(&tx_obj.txid[..8]));
+        let lock_start = std::time::Instant::now();
         let peers = self.peers.lock().clone();
+        let lock_duration = lock_start.elapsed();
+        info!("[P2P] ✅ broadcast_tx: peers lock acquired (took {:?}), {} peers", lock_duration, peers.len());
+        
         for (_id, tx) in peers {
             // clone the transaction for each peer
             let _ = tx.send(P2pMessage::Tx { tx: tx_obj.clone() });
         }
+        info!("[P2P] ✅ broadcast_tx: completed (total {:?})", lock_start.elapsed());
     }
 
     /// Request headers from all connected peers using a GetHeaders message.
@@ -841,7 +1002,12 @@ impl PeerManager {
         locator_hashes: Vec<Vec<u8>>,
         stop_hash: Option<Vec<u8>>,
     ) {
+        info!("[P2P] 🔒 request_headers_from_peers: acquiring peers lock...");
+        let lock_start = std::time::Instant::now();
         let peers = self.peers.lock().clone();
+        let lock_duration = lock_start.elapsed();
+        info!("[P2P] ✅ request_headers_from_peers: peers lock acquired (took {:?}), {} peers", lock_duration, peers.len());
+        
         for (_id, tx) in peers {
             let _ = tx.send(P2pMessage::GetHeaders {
                 locator_hashes: locator_hashes.clone(),
@@ -852,6 +1018,51 @@ impl PeerManager {
 
     pub fn get_peer_heights(&self) -> HashMap<PeerId, u64> {
         self.peer_heights.lock().clone()
+    }
+
+    /// Non-blocking snapshot for status endpoints. Returns None if any lock is contended.
+    pub fn try_get_status_snapshot(&self) -> Option<(HashMap<PeerId, u64>, u64, usize, usize)> {
+        use std::collections::HashSet;
+
+        let peer_heights = match self.peer_heights.try_lock() {
+            Some(guard) => {
+                let cloned = guard.clone();
+                drop(guard);
+                cloned
+            }
+            None => {
+                warn!("[P2P] ⚠️ try_get_status_snapshot: peer_heights lock CONTENDED");
+                return None;
+            }
+        };
+        
+        let my_height = match self.my_height.try_lock() {
+            Some(guard) => *guard,
+            None => {
+                warn!("[P2P] ⚠️ try_get_status_snapshot: my_height lock CONTENDED");
+                return None;
+            }
+        };
+        
+        let peer_ips = match self.peer_ips.try_lock() {
+            Some(guard) => guard,
+            None => {
+                warn!("[P2P] ⚠️ try_get_status_snapshot: peer_ips lock CONTENDED");
+                return None;
+            }
+        };
+
+        let mut subnet_24s = HashSet::new();
+        let mut subnet_16s = HashSet::new();
+
+        for ip in peer_ips.keys() {
+            if let Some((subnet_24, subnet_16)) = Self::get_subnet_prefixes(ip) {
+                subnet_24s.insert(subnet_24);
+                subnet_16s.insert(subnet_16);
+            }
+        }
+
+        Some((peer_heights, my_height, subnet_24s.len(), subnet_16s.len()))
     }
 
     /// Register this node with a DNS server

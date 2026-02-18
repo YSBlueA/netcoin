@@ -29,38 +29,11 @@ Windows:
 
 The release scripts prompt for **CPU vs GPU** and create a runnable package.
 
-### Build from source
-
-CPU build:
-
-```bash
-cargo build --release --workspace --exclude Astram-node --exclude Astram-explorer
-cargo build --release -p Astram-node --no-default-features
-cargo build --release -p Astram-explorer --no-default-features
-```
-
-GPU build (CUDA):
-
-```bash
-cargo build --release --workspace --exclude Astram-node --exclude Astram-explorer
-cargo build --release -p Astram-node --features cuda-miner
-cargo build --release -p Astram-explorer --features cuda-miner
-```
-
-Run:
-
-```bash
-./target/release/Astram-node
-./target/release/Astram-dns
-./target/release/Astram-explorer
-./target/release/wallet-cli
-```
-
 ## Ports
 
 - **Node HTTP + Dashboard**: `http://127.0.0.1:19533`
 - **P2P**: `8335` (env: `NODE_PORT`)
-- **Explorer**: `http://127.0.0.1:8080`
+- **Explorer**: `http://127.0.0.1:3000`
 - **DNS Server**: `8053`
 
 ## Configuration

@@ -1,5 +1,7 @@
 /// Ethereum-compatible JSON-RPC server for MetaMask integration
 use crate::NodeHandle;
+use crate::NodeMeta;
+use crate::PeerManager;
 use Astram_core::transaction::{BINCODE_CONFIG, Transaction, TransactionInput, TransactionOutput};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
@@ -61,6 +63,8 @@ impl JsonRpcResponse {
 async fn handle_rpc(
     request: JsonRpcRequest,
     node: NodeHandle,
+    p2p: std::sync::Arc<PeerManager>,
+    node_meta: std::sync::Arc<NodeMeta>,
 ) -> Result<impl Reply, warp::Rejection> {
     log::info!("RPC method called: {}", request.method);
 
@@ -72,17 +76,17 @@ async fn handle_rpc(
 
         // Account information
         "eth_accounts" => eth_accounts(request.id),
-        "eth_getBalance" => eth_get_balance(request.id, request.params, node).await,
+        "eth_getBalance" => eth_get_balance(request.id, request.params, node, node_meta.clone()).await,
         "eth_getTransactionCount" => {
-            eth_get_transaction_count(request.id, request.params, node).await
+            eth_get_transaction_count(request.id, request.params, node, node_meta.clone()).await
         }
 
         // Transaction
         "eth_sendRawTransaction" => {
-            eth_send_raw_transaction(request.id, request.params, node).await
+            eth_send_raw_transaction(request.id, request.params, node, p2p, node_meta).await
         }
         "eth_getTransactionByHash" => {
-            eth_get_transaction_by_hash(request.id, request.params, node).await
+            eth_get_transaction_by_hash(request.id, request.params, node, node_meta).await
         }
         "eth_getTransactionReceipt" => {
             eth_get_transaction_receipt(request.id, request.params, node).await
@@ -141,8 +145,13 @@ fn net_version(id: Value) -> JsonRpcResponse {
 }
 
 async fn eth_block_number(id: Value, node: NodeHandle) -> JsonRpcResponse {
-    let state = node.read().unwrap();
-    let height = state.bc.get_all_blocks().map(|b| b.len()).unwrap_or(0);
+    let height = node
+        .bc
+        .lock()
+        .unwrap()
+        .get_all_blocks()
+        .map(|b| b.len())
+        .unwrap_or(0);
     JsonRpcResponse::success(id, json!(format!("0x{:x}", height)))
 }
 
@@ -155,15 +164,17 @@ async fn eth_get_balance(
     id: Value,
     params: Option<Vec<Value>>,
     node: NodeHandle,
+    _node_meta: std::sync::Arc<NodeMeta>,
 ) -> JsonRpcResponse {
     if let Some(params) = params {
         if let Some(address) = params.get(0).and_then(|v| v.as_str()) {
             // Keep 0x prefix - addresses are stored with 0x in DB
             let address = address.to_lowercase();
 
-            let state = node.read().unwrap();
-            let balance = state
+            let balance = node
                 .bc
+                .lock()
+                .unwrap()
                 .get_address_balance_from_db(&address)
                 .unwrap_or_else(|_| U256::zero());
 
@@ -180,15 +191,17 @@ async fn eth_get_transaction_count(
     id: Value,
     params: Option<Vec<Value>>,
     node: NodeHandle,
+    _node_meta: std::sync::Arc<NodeMeta>,
 ) -> JsonRpcResponse {
     if let Some(params) = params {
         if let Some(address) = params.get(0).and_then(|v| v.as_str()) {
             // Keep 0x prefix - addresses are stored with 0x in DB
             let address = address.to_lowercase();
 
-            let state = node.read().unwrap();
-            let count = state
+            let count = node
                 .bc
+                .lock()
+                .unwrap()
                 .get_address_transaction_count_from_db(&address)
                 .unwrap_or(0);
 
@@ -203,6 +216,8 @@ async fn eth_send_raw_transaction(
     id: Value,
     params: Option<Vec<Value>>,
     node: NodeHandle,
+    p2p: std::sync::Arc<PeerManager>,
+    node_meta: std::sync::Arc<NodeMeta>,
 ) -> JsonRpcResponse {
     if let Some(params) = params {
         if let Some(raw_tx_hex) = params.get(0).and_then(|v| v.as_str()) {
@@ -270,57 +285,61 @@ async fn eth_send_raw_transaction(
                 Astram_tx.eth_hash
             );
 
-            // Add to mempool
-            let mut state = node.write().unwrap();
-
-            // Check if already seen
-            if state.seen_tx.contains_key(&Astram_tx.txid) {
-                log::warn!("Transaction already seen: {}", Astram_tx.txid);
-                return JsonRpcResponse::success(id, json!(Astram_tx.eth_hash));
-            }
-
-            // Verify signatures
+            // Verify signatures before taking mempool lock
             if !Astram_tx.verify_signatures().unwrap_or(false) {
                 log::error!("Transaction signature verification failed");
                 return JsonRpcResponse::error(id, -32000, "Invalid signature".to_string());
             }
 
-            // Security: Check for double-spending in mempool
-            let mut tx_utxos = std::collections::HashSet::new();
-            for inp in &Astram_tx.inputs {
-                tx_utxos.insert(format!("{}:{}", inp.txid, inp.vout));
-            }
+            // Add to mempool
+            {
+                let mut mempool = node.mempool.lock().unwrap();
 
-            for pending_tx in &state.pending {
-                for pending_inp in &pending_tx.inputs {
-                    let pending_utxo = format!("{}:{}", pending_inp.txid, pending_inp.vout);
-                    if tx_utxos.contains(&pending_utxo) {
-                        log::warn!(
-                            "Double-spend attempt via eth_sendRawTransaction: TX {} tries to use UTXO {} already used by pending TX {}",
-                            Astram_tx.txid,
-                            pending_utxo,
-                            pending_tx.txid
-                        );
-                        return JsonRpcResponse::error(
-                            id,
-                            -32000,
-                            format!(
-                                "Double-spend: UTXO {} already used in mempool",
-                                pending_utxo
-                            ),
-                        );
+                // Check if already seen
+                if mempool.seen_tx.contains_key(&Astram_tx.txid) {
+                    log::warn!("Transaction already seen: {}", Astram_tx.txid);
+                    return JsonRpcResponse::success(id, json!(Astram_tx.eth_hash));
+                }
+
+                // Security: Check for double-spending in mempool
+                let mut tx_utxos = std::collections::HashSet::new();
+                for inp in &Astram_tx.inputs {
+                    tx_utxos.insert(format!("{}:{}", inp.txid, inp.vout));
+                }
+
+                for pending_tx in &mempool.pending {
+                    for pending_inp in &pending_tx.inputs {
+                        let pending_utxo = format!("{}:{}", pending_inp.txid, pending_inp.vout);
+                        if tx_utxos.contains(&pending_utxo) {
+                            log::warn!(
+                                "Double-spend attempt via eth_sendRawTransaction: TX {} tries to use UTXO {} already used by pending TX {}",
+                                Astram_tx.txid,
+                                pending_utxo,
+                                pending_tx.txid
+                            );
+                            return JsonRpcResponse::error(
+                                id,
+                                -32000,
+                                format!(
+                                    "Double-spend: UTXO {} already used in mempool",
+                                    pending_utxo
+                                ),
+                            );
+                        }
                     }
                 }
+
+                // Add to pending
+                let now = chrono::Utc::now().timestamp();
+                mempool.seen_tx.insert(Astram_tx.txid.clone(), now);
+                mempool.pending.push(Astram_tx.clone());
             }
 
-            // Add to pending
-            let now = chrono::Utc::now().timestamp();
-            state.seen_tx.insert(Astram_tx.txid.clone(), now);
-            state.pending.push(Astram_tx.clone());
-
             // Store mapping: eth_hash -> txid
-            state
+            node_meta
                 .eth_to_Astram_tx
+                .lock()
+                .unwrap()
                 .insert(Astram_tx.eth_hash.clone(), Astram_tx.txid.clone());
 
             log::info!(
@@ -331,14 +350,13 @@ async fn eth_send_raw_transaction(
             log::info!("[INFO] Transaction added to mempool: {}", Astram_tx.txid);
             log::info!(
                 "[INFO] Current mapping size: {}",
-                state.eth_to_Astram_tx.len()
+                node_meta.eth_to_Astram_tx.lock().unwrap().len()
             );
 
             // Broadcast to peers
-            let p2p_clone = state.p2p.clone();
+            let p2p_clone = p2p.clone();
             let tx_clone = Astram_tx.clone();
             let eth_hash_result = Astram_tx.eth_hash.clone();
-            drop(state); // Release lock before spawning
 
             tokio::spawn(async move {
                 p2p_clone.broadcast_tx(&tx_clone).await;
@@ -619,13 +637,12 @@ async fn convert_eth_to_utxo_transaction(
     );
 
     // Get UTXOs for sender
-    let utxos = {
-        let state = node.read().unwrap();
-        state
-            .bc
-            .get_utxos(&from_addr)
-            .map_err(|e| format!("Failed to get UTXOs: {}", e))?
-    };
+    let utxos = node
+        .bc
+        .lock()
+        .unwrap()
+        .get_utxos(&from_addr)
+        .map_err(|e| format!("Failed to get UTXOs: {}", e))?;
 
     if utxos.is_empty() {
         return Err(format!("No UTXOs found for address {}", from_addr));
@@ -755,21 +772,23 @@ async fn eth_get_transaction_by_hash(
     id: Value,
     params: Option<Vec<Value>>,
     node: NodeHandle,
+    node_meta: std::sync::Arc<NodeMeta>,
 ) -> JsonRpcResponse {
     if let Some(params) = params {
         if let Some(tx_hash) = params.get(0).and_then(|v| v.as_str()) {
             let tx_hash = tx_hash.strip_prefix("0x").unwrap_or(tx_hash);
 
-            let state = node.read().unwrap();
-
             // Try to resolve Ethereum tx hash to Astram txid
-            let Astram_txid = state
-                .eth_to_Astram_tx
-                .get(tx_hash)
-                .map(|s| s.as_str())
-                .unwrap_or(tx_hash);
-
-            if let Ok(Some((tx, block_height))) = state.bc.get_transaction(Astram_txid) {
+            let Astram_txid = {
+                let mapping = node_meta.eth_to_Astram_tx.lock().unwrap();
+                mapping
+                    .get(tx_hash)
+                    .cloned()
+                    .unwrap_or_else(|| tx_hash.to_string())
+            };
+            if let Ok(Some((tx, block_height))) =
+                node.bc.lock().unwrap().get_transaction(&Astram_txid)
+            {
                 // ram and wei are now the same (both 10^18 decimals)
                 let amount = tx
                     .outputs
@@ -812,12 +831,10 @@ async fn eth_get_transaction_receipt(
 
             log::info!("[INFO] eth_getTransactionReceipt called for: 0x{}", tx_hash);
 
-            let state = node.read().unwrap();
+            let bc = node.bc.lock().unwrap();
 
             // Try to find transaction by eth_hash first (recommended)
-            match state
-                .bc
-                .get_transaction_by_eth_hash(&format!("0x{}", tx_hash))
+            match bc.get_transaction_by_eth_hash(&format!("0x{}", tx_hash))
             {
                 Ok(Some((tx, block_height))) => {
                     log::info!(
@@ -827,7 +844,7 @@ async fn eth_get_transaction_receipt(
                     );
 
                     // Get block hash
-                    let block_hash = match state.bc.get_all_blocks() {
+                    let block_hash = match bc.get_all_blocks() {
                         Ok(blocks) => {
                             if let Some(block) = blocks.get(block_height) {
                                 format!("0x{}", block.hash)
@@ -936,12 +953,11 @@ async fn eth_get_block_by_number(
 ) -> JsonRpcResponse {
     if let Some(params) = params {
         if let Some(block_param) = params.get(0).and_then(|v| v.as_str()) {
-            let state = node.read().unwrap();
+            let bc = node.bc.lock().unwrap();
 
             // Parse block number or handle "latest", "earliest", "pending"
             let block_number = match block_param {
-                "latest" | "pending" => state
-                    .bc
+                "latest" | "pending" => bc
                     .get_all_blocks()
                     .map(|b| b.len())
                     .unwrap_or(0)
@@ -957,7 +973,7 @@ async fn eth_get_block_by_number(
             // Get full transaction details flag
             let _full_tx = params.get(1).and_then(|v| v.as_bool()).unwrap_or(false);
 
-            if let Ok(blocks) = state.bc.get_all_blocks() {
+            if let Ok(blocks) = bc.get_all_blocks() {
                 if let Some(block) = blocks.get(block_number) {
                     return JsonRpcResponse::success(
                         id,
@@ -1001,8 +1017,7 @@ async fn eth_get_block_by_hash(
             let block_hash = block_hash.strip_prefix("0x").unwrap_or(block_hash);
             let _full_tx = params.get(1).and_then(|v| v.as_bool()).unwrap_or(false);
 
-            let state = node.read().unwrap();
-            if let Ok(blocks) = state.bc.get_all_blocks() {
+            if let Ok(blocks) = node.bc.lock().unwrap().get_all_blocks() {
                 if let Some((block_number, block)) = blocks
                     .iter()
                     .enumerate()
@@ -1047,8 +1062,12 @@ fn web3_client_version(id: Value) -> JsonRpcResponse {
 /// Create the Ethereum JSON-RPC server
 pub fn eth_rpc_routes(
     node: NodeHandle,
+    p2p: std::sync::Arc<PeerManager>,
+    node_meta: std::sync::Arc<NodeMeta>,
 ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
     let node_filter = warp::any().map(move || node.clone());
+    let p2p_filter = warp::any().map(move || p2p.clone());
+    let meta_filter = warp::any().map(move || node_meta.clone());
 
     // CORS configuration for MetaMask
     let cors = warp::cors()
@@ -1060,14 +1079,21 @@ pub fn eth_rpc_routes(
         .and(warp::path::end())
         .and(warp::body::json())
         .and(node_filter)
+        .and(p2p_filter)
+        .and(meta_filter)
         .and_then(handle_rpc)
         .with(cors)
         .with(warp::log("Astram::eth_rpc"))
 }
 
 /// Run the Ethereum JSON-RPC server on port 8545 (standard Ethereum port)
-pub async fn run_eth_rpc_server(node: NodeHandle, bind_addr: SocketAddr) {
-    let routes = eth_rpc_routes(node);
+pub async fn run_eth_rpc_server(
+    node: NodeHandle,
+    p2p: std::sync::Arc<PeerManager>,
+    node_meta: std::sync::Arc<NodeMeta>,
+    bind_addr: SocketAddr,
+) {
+    let routes = eth_rpc_routes(node, p2p, node_meta);
 
     println!(
         "[INFO] Ethereum JSON-RPC server running at http://{}",

@@ -308,19 +308,9 @@ async fn register_node(
         );
     }
 
-    if !is_port_reachable(node_ip, req.port).await {
-        let node_count = state.nodes.read().len();
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RegisterResponse {
-                success: false,
-                message: "Node port is not reachable from DNS server".to_string(),
-                node_count,
-                registered_address: node_address,
-                registered_port: req.port,
-            }),
-        );
-    }
+    // Note: Removed port reachability check that was blocking re-registration
+    // DNS server will accept any public IP:port combination now
+    // Health checks will verify connectivity periodically
 
     let node_id = format!("{}:{}", node_address, req.port);
     let now = Utc::now().timestamp();

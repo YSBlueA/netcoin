@@ -8,37 +8,84 @@ use Astram_core::Blockchain;
 use Astram_core::block::Block;
 use Astram_core::transaction::Transaction;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
-pub struct NodeState {
-    pub bc: Blockchain,
-    pub blockchain: Vec<Block>,
-    pub pending: Vec<Transaction>,
-    /// Seen transactions with timestamp (to prevent relay loops and track when seen)
-    /// Key: txid, Value: timestamp when first seen
-    pub seen_tx: HashMap<String, i64>,
-    pub p2p: Arc<PeerManager>,
+pub struct NodeHandles {
+    pub bc: Arc<Mutex<Blockchain>>,
+    pub mempool: Arc<Mutex<MempoolState>>,
     /// Maps Ethereum transaction hash to Astram UTXO txid (for MetaMask compatibility)
-    pub eth_to_Astram_tx: HashMap<String, String>,
-    /// Flag to cancel ongoing mining when a new block is received from network
-    pub mining_cancel_flag: Arc<std::sync::atomic::AtomicBool>,
+    pub mining: Arc<MiningState>,
+}
+
+// Lock order (when nested): bc -> chain -> mempool -> mining -> meta.
+
+pub struct ChainState {
+    pub blockchain: Vec<Block>,
     /// Orphan blocks pool: blocks waiting for their parent
     /// Key: block hash, Value: (block, received_timestamp)
     /// Security: Limited to MAX_ORPHAN_BLOCKS to prevent memory exhaustion attacks
     pub orphan_blocks: HashMap<String, (Block, i64)>,
-    /// Mining status information
-    pub mining_active: Arc<std::sync::atomic::AtomicBool>,
-    pub current_difficulty: Arc<Mutex<u32>>,
-    pub current_hashrate: Arc<Mutex<f64>>,
-    pub blocks_mined: Arc<std::sync::atomic::AtomicU64>,
-    pub node_start_time: std::time::Instant,
-    /// Miner wallet address for this node
-    pub miner_address: Arc<Mutex<String>>,
     /// Recently mined block hashes (to ignore when received from peers)
     /// Key: block hash, Value: timestamp when mined
     pub recently_mined_blocks: HashMap<String, i64>,
+}
+
+impl Default for ChainState {
+    fn default() -> Self {
+        Self {
+            blockchain: Vec::new(),
+            orphan_blocks: HashMap::new(),
+            recently_mined_blocks: HashMap::new(),
+        }
+    }
+}
+
+pub struct NodeMeta {
+    /// Miner wallet address for this node
+    pub miner_address: Arc<Mutex<String>>,
     /// My public IP address as registered with DNS server
     pub my_public_address: Arc<Mutex<Option<String>>>,
+    pub node_start_time: std::time::Instant,
+    /// Maps Ethereum transaction hash to Astram UTXO txid (for MetaMask compatibility)
+    pub eth_to_Astram_tx: Arc<Mutex<HashMap<String, String>>>,
+}
+
+pub struct MiningState {
+    /// Flag to cancel ongoing mining when a new block is received from network
+    pub cancel_flag: Arc<std::sync::atomic::AtomicBool>,
+    /// Mining status information
+    pub active: Arc<std::sync::atomic::AtomicBool>,
+    pub current_difficulty: Arc<Mutex<u32>>,
+    pub current_hashrate: Arc<Mutex<f64>>,
+    pub blocks_mined: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl Default for MiningState {
+    fn default() -> Self {
+        Self {
+            cancel_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            current_difficulty: Arc::new(Mutex::new(1)),
+            current_hashrate: Arc::new(Mutex::new(0.0)),
+            blocks_mined: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        }
+    }
+}
+
+pub struct MempoolState {
+    pub pending: Vec<Transaction>,
+    /// Seen transactions with timestamp (to prevent relay loops and track when seen)
+    /// Key: txid, Value: timestamp when first seen
+    pub seen_tx: HashMap<String, i64>,
+}
+
+impl Default for MempoolState {
+    fn default() -> Self {
+        Self {
+            pending: Vec::new(),
+            seen_tx: HashMap::new(),
+        }
+    }
 }
 
 /// Security constants for node limits
@@ -52,9 +99,9 @@ pub const MAX_MEMPOOL_BYTES: usize = 300_000_000; // 300MB max mempool size
 pub const MEMPOOL_EXPIRY_TIME: i64 = 86400; // 24 hours - old transactions expire
 pub const MIN_RELAY_FEE_PER_BYTE: u64 = 1_000_000; // 1 Gwei per byte minimum
 
-pub type NodeHandle = Arc<RwLock<NodeState>>;
+pub type NodeHandle = Arc<NodeHandles>;
 
-impl NodeState {
+impl ChainState {
     /// Security: Enforce memory block limit by removing oldest blocks
     /// Keeps only the most recent MAX_MEMORY_BLOCKS in memory
     pub fn enforce_memory_limit(&mut self) {
@@ -76,7 +123,9 @@ impl NodeState {
             );
         }
     }
+}
 
+impl MempoolState {
     /// Security: Enforce mempool limits to prevent DoS attacks
     /// Evicts low-fee or old transactions when limits are exceeded
     pub fn enforce_mempool_limit(&mut self) {
@@ -89,11 +138,6 @@ impl NodeState {
         self.pending.retain(|tx| {
             let age = now - tx.timestamp;
             if age > MEMPOOL_EXPIRY_TIME {
-                log::debug!(
-                    "[INFO] Evicting expired transaction {} (age: {}s)",
-                    &tx.txid[..8],
-                    age
-                );
                 self.seen_tx.remove(&tx.txid);
                 false
             } else {
@@ -154,7 +198,6 @@ impl NodeState {
                     let txid = tx.txid.clone();
                     self.pending.remove(0);
                     self.seen_tx.remove(&txid);
-                    log::debug!("[INFO] Evicted low-fee transaction {}", &txid[..8]);
                 }
             }
 

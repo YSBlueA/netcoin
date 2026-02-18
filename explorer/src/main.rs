@@ -28,13 +28,14 @@ async fn main() -> std::io::Result<()> {
 
     // Background sync with the Node process
     let db_sync = explorer_db.clone();
+    let rpc_client = Arc::new(NodeRpcClient::new("http://127.0.0.1:19533"));
+    let rpc_for_sync = rpc_client.clone();
     tokio::spawn(async move {
-        let rpc_client = NodeRpcClient::new("http://127.0.0.1:19533");
 
         info!("Starting blockchain indexing...");
 
         // Initial sync
-        match sync_blockchain(&db_sync, &rpc_client).await {
+        match sync_blockchain(&db_sync, &rpc_for_sync).await {
             Ok(()) => {
                 info!("Initial blockchain sync completed");
             }
@@ -49,7 +50,7 @@ async fn main() -> std::io::Result<()> {
         loop {
             sync_interval.tick().await;
 
-            match sync_blockchain(&db_sync, &rpc_client).await {
+            match sync_blockchain(&db_sync, &rpc_for_sync).await {
                 Ok(()) => {
                     // Success logging is handled in sync_blockchain
                 }
@@ -77,6 +78,7 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .app_data(web::Data::new(explorer_db.clone()))
+            .app_data(web::Data::new(rpc_client.clone()))
             .wrap(middleware::Logger::default())
             .wrap(cors)
             .service(
@@ -100,7 +102,8 @@ async fn main() -> std::io::Result<()> {
                     .route(
                         "/address/{address}",
                         web::get().to(handlers::get_address_info),
-                    ),
+                    )
+                    .route("/node/status", web::get().to(handlers::get_node_status)),
             )
     })
     .bind(format!("{}:{}", server_address, server_port))?
@@ -135,17 +138,19 @@ async fn sync_blockchain(db: &ExplorerDB, rpc_client: &NodeRpcClient) -> anyhow:
     };
 
     if blocks.is_empty() {
-        log::debug!("No new blocks to sync");
+        log::debug!("ℹ️  No new blocks from node RPC");
         return Ok(());
     }
 
     let latest_height = blocks.iter().map(|b| b.height).max().unwrap_or(last_synced);
+    log::info!("🔄 ExplorerSync: {} new blocks from RPC, height {} -> {}", blocks.len(), last_synced, latest_height);
 
     // Index all blocks
     let mut new_blocks = 0;
     let mut new_transactions = 0;
 
     for block in &blocks {
+        log::debug!("💾 ExplorerSync: Persisting block height={} to local DB", block.height);
         db.save_block(block)?;
         new_blocks += 1;
     }

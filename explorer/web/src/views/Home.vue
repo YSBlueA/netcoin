@@ -1,7 +1,7 @@
 <template>
   <div class="home-page">
     <div class="hero">
-      <h1>?�️ Astram Blockchain Explorer</h1>
+      <h1>Astram Blockchain Explorer</h1>
       <p>Real-time blockchain monitoring</p>
     </div>
 
@@ -66,8 +66,8 @@
           >
             <div class="item-header">
               <span class="tx-hash">
-                <span v-if="tx.from === 'Block_Reward'" class="tx-type-badge coinbase">?�️ Mining</span>
-                <span v-else class="tx-type-badge transfer">?�� Transfer</span>
+                <span v-if="tx.from === 'Block_Reward'" class="tx-type-badge coinbase">?�️ Mining</span>
+                <span v-else class="tx-type-badge transfer">?�� Transfer</span>
                 {{ truncateHash(tx.hash) }}
               </span>
               <span class="timestamp">{{ formatTime(tx.timestamp) }}</span>
@@ -99,7 +99,7 @@ export default {
   },
   mounted() {
     this.fetchData();
-    // 10초마???�이???�로고침
+    // 10초마???�이???�로고침
     setInterval(() => this.fetchData(), 10000);
   },
   methods: {
@@ -115,7 +115,7 @@ export default {
         this.recentBlocks = blocksRes.data.blocks || [];
         this.recentTransactions = txsRes.data.transactions || [];
       } catch (error) {
-        console.error("?�이??로딩 ?�패:", error);
+        console.error("?�이??로딩 ?�패:", error);
       }
     },
     handleSearch() {
@@ -123,19 +123,19 @@ export default {
 
       const query = this.searchQuery.trim();
 
-      // ?�이�?검??(?�자)
+      // ?�이�?검??(?�자)
       if (/^\d+$/.test(query)) {
         this.$router.push(`/blocks/${query}`);
         return;
       }
 
-      // 주소�?검??(32???�상)
+      // 주소�?검??(32???�상)
       if (query.length > 30) {
         this.$router.push(`/address/${query}`);
         return;
       }
 
-      // ?�시�?검??
+      // ?�시�?검??
       this.$router.push(`/transactions/${query}`);
     },
     goToBlock(height) {
@@ -174,7 +174,7 @@ export default {
       });
     },
     formatVolumeAmount(value) {
-      // �?거래???�용 ?�맷 (?�수???�이)
+      // �?거래???�용 ?�맷 (?�수???�이)
       let num;
       
       if (Array.isArray(value)) {

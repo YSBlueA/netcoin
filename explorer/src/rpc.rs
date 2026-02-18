@@ -36,6 +36,18 @@ impl NodeRpcClient {
         }
     }
 
+    /// Fetch node status snapshot
+    pub async fn fetch_status(&self) -> Result<serde_json::Value, String> {
+        let url = format!("{}/status", self.node_url);
+        match reqwest::get(&url).await {
+            Ok(resp) => resp
+                .json::<serde_json::Value>()
+                .await
+                .map_err(|e| format!("Failed to parse status response: {}", e)),
+            Err(e) => Err(format!("Network error fetching status: {}", e)),
+        }
+    }
+
     /// Lightweight counts endpoint
     pub async fn fetch_counts(&self) -> Result<(u64, u64), String> {
         let url = format!("{}/counts", self.node_url);

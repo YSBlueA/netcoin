@@ -30,6 +30,7 @@ impl ExplorerDB {
     /// Key: b:<height> -> BlockInfo (JSON)
     /// Key: bh:<hash> -> height
     pub fn save_block(&self, block: &BlockInfo) -> Result<()> {
+        log::info!("🗄️  ExplorerDB: Saving block height={}", block.height);
         let mut batch = WriteBatch::default();
 
         // b:<height> -> BlockInfo
@@ -42,6 +43,7 @@ impl ExplorerDB {
         batch.put(hash_key.as_bytes(), block.height.to_string().as_bytes());
 
         self.db.write(batch)?;
+        log::info!("✅ ExplorerDB: Block height={} persisted", block.height);
         Ok(())
     }
 
@@ -249,13 +251,18 @@ impl ExplorerDB {
 
     /// 주소 정보 조회
     pub fn get_address_info(&self, address: &str) -> Result<Option<AddressInfo>> {
+        log::debug!("DB: Getting address info for: {}", address);
         let key = format!("addr:{}", address);
         match self.db.get(key.as_bytes())? {
             Some(data) => {
                 let info: AddressInfo = serde_json::from_slice(&data)?;
+                log::debug!("DB: Found address info - balance: {}", info.balance);
                 Ok(Some(info))
             }
-            None => Ok(None),
+            None => {
+                log::debug!("DB: Address info not found for: {}", address);
+                Ok(None)
+            }
         }
     }
 
