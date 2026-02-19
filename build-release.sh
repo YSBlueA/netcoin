@@ -71,6 +71,31 @@ cargo build --release -p Astram-explorer $EXPLORER_BUILD_FLAGS
 
 echo -e "${SUCCESS}OK    Build completed successfully!${NC}"
 
+# Build explorer web frontend
+echo -e "${INFO}INFO  Building explorer web frontend...${NC}"
+if ! command -v npm >/dev/null 2>&1; then
+    echo -e "${ERROR}ERROR npm is required to build explorer/web${NC}"
+    exit 1
+fi
+
+pushd "explorer/web" >/dev/null
+if [ -f "package-lock.json" ]; then
+    npm ci
+else
+    npm install
+fi
+npm run build
+popd >/dev/null
+
+if [ ! -d "explorer/web/dist" ]; then
+    echo -e "${ERROR}ERROR Missing explorer/web/dist after build${NC}"
+    exit 1
+fi
+
+mkdir -p "$RELEASE_DIR/explorer_web"
+cp -R "explorer/web/dist/." "$RELEASE_DIR/explorer_web/"
+echo -e "${SUCCESS}OK    Deployed explorer web to $RELEASE_DIR/explorer_web${NC}"
+
 # Copy executables
 echo -e "${INFO}INFO  Copying executables...${NC}"
 EXECUTABLES=(

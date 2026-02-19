@@ -6,8 +6,6 @@ Cargo.lock
 **/target/
 **/Cargo.lock
 
-
-
 # === build ===
 *.log
 *.out
@@ -17,6 +15,7 @@ Cargo.lock
 release/
 examples/
 package-lock.json
+explorer/web/public/
 
 # === IDE ===
 # VSCode

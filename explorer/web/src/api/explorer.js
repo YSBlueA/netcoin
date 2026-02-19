@@ -1,6 +1,14 @@
 import axios from 'axios'
 
-const API_BASE_URL = 'http://localhost:8080/api'
+const runtimeConfig =
+  typeof window !== 'undefined' && window.ASTRAM_EXPLORER_CONF
+    ? window.ASTRAM_EXPLORER_CONF
+    : {}
+
+const API_BASE_URL =
+  runtimeConfig.apiBaseUrl ||
+  import.meta.env.VITE_API_BASE_URL ||
+  'http://localhost:8080/api'
 
 export const explorerAPI = {
   // 블록 관련

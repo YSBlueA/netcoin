@@ -64,6 +64,43 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Success "Build completed successfully!"
 
+# Build explorer web frontend
+Write-Info "Building explorer web frontend..."
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Write-Error "npm is required to build explorer/web"
+    exit 1
+}
+
+Push-Location "explorer/web"
+if (Test-Path "package-lock.json") {
+    npm ci
+} else {
+    npm install
+}
+
+if ($LASTEXITCODE -ne 0) {
+    Pop-Location
+    Write-Error "Failed to install explorer/web dependencies"
+    exit 1
+}
+
+npm run build
+if ($LASTEXITCODE -ne 0) {
+    Pop-Location
+    Write-Error "Failed to build explorer/web"
+    exit 1
+}
+Pop-Location
+
+if (-not (Test-Path "explorer/web/dist")) {
+    Write-Error "Missing explorer/web/dist after build"
+    exit 1
+}
+
+New-Item -ItemType Directory -Force -Path "$ReleaseDir/explorer_web" | Out-Null
+Copy-Item -Recurse -Force "explorer/web/dist/*" "$ReleaseDir/explorer_web/"
+Write-Success "Deployed explorer web to $ReleaseDir/explorer_web"
+
 # Copy executables
 Write-Info "Copying executables..."
 $Executables = @(
