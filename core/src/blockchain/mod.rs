@@ -5,6 +5,7 @@ use crate::utxo::Utxo;
 use anyhow::{Result, anyhow};
 use bincode::config;
 use chrono::Utc;
+use hex;
 use log;
 use once_cell::sync::Lazy;
 use primitive_types::U256;
@@ -30,6 +31,83 @@ pub struct Blockchain {
 }
 
 impl Blockchain {
+    const POW_LIMIT_BITS: u32 = 0x1d0fffff; // Easiest allowed target (testnet-like)
+    const POW_MIN_BITS: u32 = 0x1900ffff; // Hardest allowed target
+    const RETARGET_WINDOW: u64 = 30; // 30 blocks rolling window
+
+    fn compact_to_target(bits: u32) -> U256 {
+        let exponent = bits >> 24;
+        let mantissa = bits & 0x007f_ffff;
+        if mantissa == 0 {
+            return U256::zero();
+        }
+
+        if exponent <= 3 {
+            U256::from(mantissa >> (8 * (3 - exponent)))
+        } else {
+            U256::from(mantissa) << (8 * (exponent - 3))
+        }
+    }
+
+    fn target_to_compact(target: U256) -> u32 {
+        if target.is_zero() {
+            return 0;
+        }
+
+        let mut bytes = [0u8; 32];
+        target.to_big_endian(&mut bytes);
+        let first_non_zero = bytes.iter().position(|&b| b != 0).unwrap_or(31);
+        let mut size = (32 - first_non_zero) as u32;
+
+        let mut mantissa: u32 = if size <= 3 {
+            let mut v: u32 = 0;
+            for i in first_non_zero..32 {
+                v = (v << 8) | bytes[i] as u32;
+            }
+            v << (8 * (3 - size))
+        } else {
+            ((bytes[first_non_zero] as u32) << 16)
+                | ((bytes[first_non_zero + 1] as u32) << 8)
+                | (bytes[first_non_zero + 2] as u32)
+        };
+
+        if (mantissa & 0x0080_0000) != 0 {
+            mantissa >>= 8;
+            size += 1;
+        }
+
+        (size << 24) | (mantissa & 0x007f_ffff)
+    }
+
+    fn hash_to_u256(hash_hex: &str) -> Result<U256> {
+        let normalized = hash_hex.strip_prefix("0x").unwrap_or(hash_hex);
+        let bytes = hex::decode(normalized)?;
+        if bytes.len() != 32 {
+            return Err(anyhow!(
+                "invalid hash length for PoW comparison: expected 32 bytes, got {}",
+                bytes.len()
+            ));
+        }
+        Ok(U256::from_big_endian(&bytes))
+    }
+
+    fn pow_limit_target() -> U256 {
+        Self::compact_to_target(Self::POW_LIMIT_BITS)
+    }
+
+    fn min_target() -> U256 {
+        Self::compact_to_target(Self::POW_MIN_BITS)
+    }
+
+    fn is_valid_pow(hash_hex: &str, bits: u32) -> Result<bool> {
+        let hash = Self::hash_to_u256(hash_hex)?;
+        let target = Self::compact_to_target(bits);
+        if target.is_zero() {
+            return Ok(false);
+        }
+        Ok(hash < target)
+    }
+
     pub fn new(db_path: &str) -> Result<Self> {
         let db = open_db(db_path)?;
         // load tip if exists
@@ -43,65 +121,18 @@ impl Blockchain {
                 if let Ok((block, _)) =
                     bincode::decode_from_slice::<Block, _>(&blob, *BINCODE_CONFIG)
                 {
-                    // Calculate difficulty for the next block based on current chain state
-                    let next_index = block.header.index + 1;
-                    // Create temporary instance WITHOUT opening DB again
-                    // We'll calculate difficulty manually here to avoid double-opening DB
-
-                    // Simple difficulty adjustment logic inline
-                    if next_index % 30 == 0 && next_index > 0 {
-                        // Adjustment point - get last 30 blocks to calculate
-                        let start_index = next_index.saturating_sub(30);
-                        if let Ok(Some(start_blob)) =
-                            db.get(format!("i:{}", start_index).as_bytes())
-                        {
-                            if let Ok(start_hash) = String::from_utf8(start_blob) {
-                                if let Ok(Some(start_header_blob)) =
-                                    db.get(format!("b:{}", start_hash).as_bytes())
-                                {
-                                    if let Ok((start_block, _)) =
-                                        bincode::decode_from_slice::<Block, _>(
-                                            &start_header_blob,
-                                            *BINCODE_CONFIG,
-                                        )
-                                    {
-                                        let time_taken =
-                                            block.header.timestamp - start_block.header.timestamp;
-                                        let expected_time = 120 * 30; // block_interval * 30
-
-                                        if time_taken < expected_time / 2 {
-                                            block.header.difficulty + 1
-                                        } else if time_taken > expected_time * 2 {
-                                            block.header.difficulty.saturating_sub(1).max(1)
-                                        } else {
-                                            block.header.difficulty
-                                        }
-                                    } else {
-                                        block.header.difficulty
-                                    }
-                                } else {
-                                    block.header.difficulty
-                                }
-                            } else {
-                                block.header.difficulty
-                            }
-                        } else {
-                            block.header.difficulty
-                        }
-                    } else {
-                        block.header.difficulty
-                    }
+                    block.header.difficulty
                 } else {
                     log::warn!("Failed to decode tip block, using default difficulty");
-                    2
+                    Self::POW_LIMIT_BITS
                 }
             } else {
                 log::warn!("Tip block not found, using default difficulty");
-                2
+                Self::POW_LIMIT_BITS
             }
         } else {
             // No chain exists yet, use default
-            2
+            Self::POW_LIMIT_BITS
         };
 
         log::info!("Blockchain initialized with difficulty: {}", difficulty);
@@ -191,21 +222,21 @@ impl Blockchain {
             ));
         }
 
-        // 2) Proof-of-Work: verify hash meets difficulty requirement
-        let required_prefix = "0".repeat(block.header.difficulty as usize);
-        if !block.hash.starts_with(&required_prefix) {
+        // 2) Proof-of-Work: verify hash is below target (Bitcoin-style)
+        if !Self::is_valid_pow(&block.hash, block.header.difficulty)? {
             crate::security::VALIDATION_STATS
                 .increment(crate::security::BlockFailureReason::InvalidPoW);
+            let target = Self::compact_to_target(block.header.difficulty);
             log::warn!(
-                "🚫 Block validation failed [invalid_pow]: height={} hash={} difficulty={}",
+                "🚫 Block validation failed [invalid_pow]: height={} hash={} bits=0x{:08x}",
                 block.header.index,
                 &block.hash[..16],
                 block.header.difficulty
             );
             return Err(anyhow!(
-                "invalid PoW: hash {} does not meet difficulty {} (needs {} leading zeros)",
+                "invalid PoW: hash {} is not below target {} (bits=0x{:08x})",
                 block.hash,
-                block.header.difficulty,
+                target,
                 block.header.difficulty
             ));
         }
@@ -222,30 +253,31 @@ impl Blockchain {
                 if let Ok((prev_header, _)) =
                     bincode::decode_from_slice::<BlockHeader, _>(&prev_bytes, *BINCODE_CONFIG)
                 {
-                    // Allow difficulty to change by at most 2x in either direction
-                    let min_allowed = prev_header.difficulty.saturating_sub(2);
-                    let max_allowed = prev_header.difficulty + 2;
+                    let prev_target = Self::compact_to_target(prev_header.difficulty);
+                    let current_target = Self::compact_to_target(block.header.difficulty);
 
-                    if block.header.difficulty < min_allowed
-                        || block.header.difficulty > max_allowed
+                    // Allow target to change by at most 4x per block in either direction.
+                    // (Equivalent to Bitcoin-style retarget clamping safety)
+                    if current_target.is_zero()
+                        || (!prev_target.is_zero()
+                            && ((current_target > prev_target
+                                && (current_target / prev_target) > U256::from(4u8))
+                                || (current_target < prev_target
+                                    && (prev_target / current_target) > U256::from(4u8))))
                     {
                         crate::security::VALIDATION_STATS
                             .increment(crate::security::BlockFailureReason::DifficultyOutOfRange);
                         log::warn!(
-                            "🚫 Block validation failed [difficulty_out_of_range]: height={} got={} prev={} allowed={}-{}",
+                            "🚫 Block validation failed [difficulty_out_of_range]: height={} got_bits=0x{:08x} prev_bits=0x{:08x}",
                             block.header.index,
                             block.header.difficulty,
-                            prev_header.difficulty,
-                            min_allowed,
-                            max_allowed
+                            prev_header.difficulty
                         );
                         return Err(anyhow!(
-                            "difficulty at block {} out of allowed range: got {}, previous {}, allowed range: {}-{}",
+                            "difficulty target changed too aggressively at block {}: got bits=0x{:08x}, previous bits=0x{:08x}",
                             block.header.index,
                             block.header.difficulty,
-                            prev_header.difficulty,
-                            min_allowed,
-                            max_allowed
+                            prev_header.difficulty
                         ));
                     }
                 }
@@ -557,33 +589,17 @@ impl Blockchain {
     }
 
     /// Calculate adjusted difficulty based on recent block times
-    /// Adjustment period: every 30 blocks
+    /// Adjustment period: every block (using rolling 30-block window)
     /// Target: 120 seconds per block (2 minutes)
-    /// Bitcoin-style: Conservative adjustment with max ±1 change per period
+    /// Bitcoin-style: U256 hash target retargeting with damped updates
     pub fn calculate_adjusted_difficulty(&self, current_index: u64) -> Result<u32> {
-        const ADJUSTMENT_INTERVAL: u64 = 30; // Adjust every 30 blocks
-        const MIN_DIFFICULTY: u32 = 1;
-        const MAX_DIFFICULTY: u32 = 10; // Reduced from 32
-        const SLOW_START_BLOCKS: u64 = 100; // First 100 blocks use slow start
-
-        // 🔒 Slow Start: Keep difficulty low for first N blocks to allow network to bootstrap
-        if current_index < SLOW_START_BLOCKS {
-            let slow_start_diff = 1 + (current_index / 20) as u32; // Gradually increase from 1
-            return Ok(slow_start_diff.min(3)); // Max difficulty 3 during slow start
-        }
-
-        // No adjustment needed for early blocks
-        if current_index < ADJUSTMENT_INTERVAL {
+        // No adjustment until enough history is available
+        if current_index < Self::RETARGET_WINDOW {
             return Ok(self.difficulty);
         }
 
-        // Only adjust at interval boundaries
-        if current_index % ADJUSTMENT_INTERVAL != 0 {
-            return Ok(self.difficulty);
-        }
-
-        // Get the block at adjustment boundary (30 blocks ago)
-        let start_index = current_index - ADJUSTMENT_INTERVAL;
+        // Rolling window: compare timestamps of [current_index - window, current_index - 1]
+        let start_index = current_index - Self::RETARGET_WINDOW;
         let start_hash = self.db.get(format!("i:{}", start_index).as_bytes())?;
         let end_hash = self.db.get(format!("i:{}", current_index - 1).as_bytes())?;
 
@@ -606,57 +622,65 @@ impl Blockchain {
         let start_time = start_header.unwrap().timestamp;
         let end_time = end_header.unwrap().timestamp;
 
-        // Calculate actual time taken for the last 30 blocks
-        let actual_time = end_time - start_time;
-        let target_time = self.block_interval * ADJUSTMENT_INTERVAL as i64; // 120s × 30 = 3600s (1 hour)
+        // Calculate actual time taken for the last window
+        let raw_actual_time = (end_time - start_time).max(1);
+        let target_time = self.block_interval * Self::RETARGET_WINDOW as i64;
+        let clamped_actual_time = raw_actual_time.clamp(target_time / 4, target_time * 4);
 
         log::info!(
             "Difficulty adjustment at block {}: actual={}s, target={}s, avg={:.1}s/block",
             current_index,
-            actual_time,
+            raw_actual_time,
             target_time,
-            actual_time as f64 / ADJUSTMENT_INTERVAL as f64
+            raw_actual_time as f64 / Self::RETARGET_WINDOW as f64
         );
 
-        // Bitcoin-style conservative adjustment
-        // Problem: difficulty is "leading zeros count", so each +1 = 16x harder!
-        // Solution: Only adjust by ±1, with damping based on ratio
+        let ratio = raw_actual_time as f64 / target_time as f64;
+
         let current_difficulty = self.difficulty;
-
-        // Calculate how far off we are from target
-        let ratio = actual_time as f64 / target_time as f64;
-
-        let new_difficulty = if ratio < 0.5 {
-            // Blocks are >2x too fast - increase difficulty by 1
-            current_difficulty.saturating_add(1)
-        } else if ratio < 0.75 {
-            // Blocks are 25-50% too fast - increase difficulty by 1
-            current_difficulty.saturating_add(1)
-        } else if ratio > 2.0 {
-            // Blocks are >2x too slow - decrease difficulty by 1
-            current_difficulty.saturating_sub(1).max(1)
-        } else if ratio > 1.5 {
-            // Blocks are 50-100% too slow - decrease difficulty by 1
-            current_difficulty.saturating_sub(1).max(1)
-        } else {
-            // Within ±50% of target - no change
-            current_difficulty
+        let pow_limit = Self::pow_limit_target();
+        let min_target = Self::min_target();
+        let current_target = {
+            let t = Self::compact_to_target(current_difficulty);
+            if t.is_zero() { pow_limit } else { t }
         };
 
-        let final_difficulty = new_difficulty.clamp(MIN_DIFFICULTY, MAX_DIFFICULTY);
+        // Core Bitcoin-style retarget: new_target = old_target * actual / target
+        let mut retargeted = (current_target * U256::from(clamped_actual_time as u64))
+            / U256::from(target_time as u64);
+
+        // Clamp target bounds
+        if retargeted > pow_limit {
+            retargeted = pow_limit;
+        }
+        if retargeted < min_target {
+            retargeted = min_target;
+        }
+
+        // Damp oscillations: apply only 25% of the computed move each block.
+        let damped = if retargeted > current_target {
+            current_target + ((retargeted - current_target) / U256::from(4u8))
+        } else if retargeted < current_target {
+            current_target - ((current_target - retargeted) / U256::from(4u8))
+        } else {
+            current_target
+        };
+
+        let final_target = damped.clamp(min_target, pow_limit);
+        let final_difficulty = Self::target_to_compact(final_target);
 
         if final_difficulty != current_difficulty {
             log::info!(
-                "Difficulty adjusted: {} -> {} (ratio: {:.2}x target, avg: {:.1}s/block vs target: {}s/block)",
+                "Difficulty adjusted: bits 0x{:08x} -> 0x{:08x} (ratio: {:.2}x target, avg: {:.1}s/block vs target: {}s/block)",
                 current_difficulty,
                 final_difficulty,
                 ratio,
-                actual_time as f64 / ADJUSTMENT_INTERVAL as f64,
+                raw_actual_time as f64 / Self::RETARGET_WINDOW as f64,
                 self.block_interval
             );
         } else {
             log::info!(
-                "Difficulty unchanged: {} (ratio: {:.2}x, within acceptable range)",
+                "Difficulty unchanged: bits 0x{:08x} (ratio: {:.2}x, within acceptable range)",
                 current_difficulty,
                 ratio
             );
@@ -672,13 +696,21 @@ impl Blockchain {
         header: &mut BlockHeader,
         difficulty: u32,
     ) -> Result<(u64, String)> {
-        let target_prefix = "0".repeat(difficulty as usize);
+        let target = Self::compact_to_target(difficulty);
+        if target.is_zero() {
+            return Err(anyhow!(
+                "cannot mine with invalid target bits: 0x{:08x}",
+                difficulty
+            ));
+        }
+
         let mut nonce: u64 = header.nonce;
 
         loop {
             header.nonce = nonce;
             let hash = compute_header_hash(header)?;
-            if hash.starts_with(&target_prefix) {
+            let hash_u256 = Self::hash_to_u256(&hash)?;
+            if hash_u256 < target {
                 return Ok((nonce, hash));
             }
 

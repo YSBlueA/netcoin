@@ -12,4 +12,5 @@ This folder contains project documentation for Astram. The docs are intentionall
 ## Notes
 
 - These documents describe the implementation in this repository, not a separate spec.
+- Consensus sections reflect target-based PoW (`hash < target`) and damped rolling retargeting for ~120s blocks.
 - If you need more detail (math, formal proofs, or protocol schemas), add a request and we will extend the docs.

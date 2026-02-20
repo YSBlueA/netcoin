@@ -25,6 +25,8 @@ Astram assumes a standard PoW threat model:
 - P2P ports should be exposed only as needed.
 - HTTP and JSON-RPC servers default to localhost and should remain private unless explicitly exposed.
 - DNS registration requires reachable public ports; only do this on a secured host.
+- Consensus validation enforces numeric PoW targets (`hash_u256 < target_u256`) instead of prefix-only checks.
+- Difficulty retargeting applies bounded timespan clamps and per-block damping to reduce abrupt oscillations.
 
 ## Network Security
 

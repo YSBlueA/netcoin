@@ -11,7 +11,7 @@ const API_BASE_URL =
   'http://localhost:8080/api'
 
 export const explorerAPI = {
-  // 블록 관련
+  // Block endpoints
   getBlocks(page = 1, limit = 20) {
     return axios.get(`${API_BASE_URL}/blocks`, {
       params: { page, limit }
@@ -26,7 +26,7 @@ export const explorerAPI = {
     return axios.get(`${API_BASE_URL}/blocks/hash/${hash}`)
   },
 
-  // 트랜잭션 관련
+  // Transaction endpoints
   getTransactions(page = 1, limit = 20) {
     return axios.get(`${API_BASE_URL}/transactions`, {
       params: { page, limit }
@@ -37,22 +37,22 @@ export const explorerAPI = {
     return axios.get(`${API_BASE_URL}/transactions/${hash}`)
   },
 
-  // 통계
+  // Statistics
   getStats() {
     return axios.get(`${API_BASE_URL}/stats`)
   },
 
-  // 주소
+  // Address
   getAddressInfo(address) {
     return axios.get(`${API_BASE_URL}/address/${address}`)
   },
 
-  // 헬스 체크
+  // Health check
   health() {
     return axios.get(`${API_BASE_URL}/health`)
   },
 
-  // 노드 상태
+  // Node status
   getNodeStatus() {
     return axios.get(`${API_BASE_URL}/node/status`)
   },

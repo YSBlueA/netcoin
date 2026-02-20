@@ -22,22 +22,25 @@ Astram consists of:
 
 ## Consensus and Mining
 
-- Consensus is Proof-of-Work using a simple leading-zero-hex target.
+- Consensus is Proof-of-Work using a Bitcoin-style numeric target check (`hash_u256 < target_u256`).
 - Mining can run on CPU or CUDA (feature-flag based builds).
-- Difficulty is dynamically adjusted based on recent block times.
+- Difficulty is dynamically adjusted to converge toward a 120-second block interval.
 
 ### PoW target model
 
-- Difficulty is the number of leading hex zero characters required in the block hash.
-- Each +1 difficulty step is 16x harder; therefore adjustments are conservative.
+- The block header stores compact target bits (`nBits`-style `u32`) in the `difficulty` field.
+- Validation converts compact bits to a full 256-bit target and enforces `hash_u256 < target_u256`.
+- This model supports fine-grained retargeting without large 16x step jumps.
 
 ### Difficulty adjustment
 
 - Target block time: 120 seconds.
-- Adjustment interval: every 30 blocks.
-- Slow start: first 100 blocks ramp difficulty from 1, capped at 3.
-- Adjustment step: at most +1 or -1 per interval, clamped to [1, 10].
-- Validation additionally constrains sudden changes (adjacent blocks may vary by at most 2).
+- Retarget cadence: every block, using a rolling 30-block timing window.
+- Core formula: `new_target = old_target * actual_timespan / target_timespan`.
+- Timespan clamp: `actual_timespan` is bounded to `[target_timespan/4, target_timespan*4]`.
+- Damping: each block applies 25% of the computed move to reduce oscillation.
+- Bounds: target is clamped between a network maximum target (`POW_LIMIT_BITS`) and minimum target (`POW_MIN_BITS`).
+- Validation additionally rejects per-block target changes beyond 4x in either direction.
 
 ### Block reward and halving
 
@@ -155,37 +158,39 @@ Astram consists of:
 
 ## Parameter Summary
 
-| Category  | Parameter                      | Value                               |
-| --------- | ------------------------------ | ----------------------------------- |
-| Consensus | Target block time              | 120 seconds                         |
-| Consensus | Difficulty adjustment interval | 30 blocks                           |
-| Consensus | Slow start window              | First 100 blocks (max difficulty 3) |
-| Consensus | Difficulty clamp               | [1, 10]                             |
-| Consensus | PoW target                     | Leading hex zero count              |
-| Consensus | Initial block reward           | 8 ASRM                              |
-| Consensus | Halving interval               | 210,000 blocks                      |
-| Consensus | Max supply target              | 42,000,000 ASRM                     |
-| Network   | Protocol version               | 1                                   |
-| Network   | Mainnet Network ID             | Astram-mainnet                      |
-| Network   | Mainnet Chain ID               | 1                                   |
-| Network   | Testnet Network ID             | Astram-testnet                      |
-| Network   | Testnet Chain ID               | 8888                                |
-| Network   | Max outbound peers             | 8                                   |
-| Network   | Max peers per IP               | 3                                   |
-| Network   | Max peers per /24              | 2                                   |
-| Network   | Max peers per /16              | 4                                   |
-| Network   | Outbound /16 diversity         | 3 distinct subnets                  |
-| Network   | Handshake timeout              | 30 seconds                          |
-| Network   | Max inventory per message      | 50,000                              |
-| Network   | Block announce rate            | 10 per minute per peer              |
-| Fees      | Base minimum fee               | 0.0001 ASRM                         |
-| Fees      | Per-byte relay fee             | 200 Gwei/byte                       |
-| Fees      | Default wallet fee             | 300 Gwei/byte                       |
-| Limits    | Max transaction size           | 100 KB                              |
-| Limits    | Max inputs per tx              | 1000                                |
-| Limits    | Max outputs per tx             | 1000                                |
-| Limits    | Min output value               | 1 Twei                              |
-| Limits    | Max reorg depth                | 100                                 |
+| Category  | Parameter                 | Value                                                         |
+| --------- | ------------------------- | ------------------------------------------------------------- |
+| Consensus | Target block time         | 120 seconds                                                   |
+| Consensus | Retarget cadence          | Every block (rolling 30-block timing window)                  |
+| Consensus | Retarget formula          | `new_target = old_target * actual_timespan / target_timespan` |
+| Consensus | Per-update damping        | 25% toward computed target                                    |
+| Consensus | Timespan clamp            | `[target_timespan/4, target_timespan*4]`                      |
+| Consensus | PoW target                | `hash_u256 < target_u256`                                     |
+| Consensus | Difficulty encoding       | Compact bits (`nBits`-style `u32`)                            |
+| Consensus | Initial block reward      | 8 ASRM                                                        |
+| Consensus | Halving interval          | 210,000 blocks                                                |
+| Consensus | Max supply target         | 42,000,000 ASRM                                               |
+| Network   | Protocol version          | 1                                                             |
+| Network   | Mainnet Network ID        | Astram-mainnet                                                |
+| Network   | Mainnet Chain ID          | 1                                                             |
+| Network   | Testnet Network ID        | Astram-testnet                                                |
+| Network   | Testnet Chain ID          | 8888                                                          |
+| Network   | Max outbound peers        | 8                                                             |
+| Network   | Max peers per IP          | 3                                                             |
+| Network   | Max peers per /24         | 2                                                             |
+| Network   | Max peers per /16         | 4                                                             |
+| Network   | Outbound /16 diversity    | 3 distinct subnets                                            |
+| Network   | Handshake timeout         | 30 seconds                                                    |
+| Network   | Max inventory per message | 50,000                                                        |
+| Network   | Block announce rate       | 10 per minute per peer                                        |
+| Fees      | Base minimum fee          | 0.0001 ASRM                                                   |
+| Fees      | Per-byte relay fee        | 200 Gwei/byte                                                 |
+| Fees      | Default wallet fee        | 300 Gwei/byte                                                 |
+| Limits    | Max transaction size      | 100 KB                                                        |
+| Limits    | Max inputs per tx         | 1000                                                          |
+| Limits    | Max outputs per tx        | 1000                                                          |
+| Limits    | Min output value          | 1 Twei                                                        |
+| Limits    | Max reorg depth           | 100                                                           |
 
 ## APIs
 

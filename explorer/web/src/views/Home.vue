@@ -99,7 +99,7 @@ export default {
   },
   mounted() {
     this.fetchData();
-    // 10초마???�이???�로고침
+    // Auto-refresh every 10 seconds
     setInterval(() => this.fetchData(), 10000);
   },
   methods: {
@@ -115,7 +115,7 @@ export default {
         this.recentBlocks = blocksRes.data.blocks || [];
         this.recentTransactions = txsRes.data.transactions || [];
       } catch (error) {
-        console.error("?�이??로딩 ?�패:", error);
+        console.error("Failed to load data:", error);
       }
     },
     handleSearch() {
@@ -123,19 +123,19 @@ export default {
 
       const query = this.searchQuery.trim();
 
-      // ?�이�?검??(?�자)
+      // Block height search (numeric)
       if (/^\d+$/.test(query)) {
         this.$router.push(`/blocks/${query}`);
         return;
       }
 
-      // 주소�?검??(32???�상)
+      // Address search (typically longer strings)
       if (query.length > 30) {
         this.$router.push(`/address/${query}`);
         return;
       }
 
-      // ?�시�?검??
+      // Transaction hash search
       this.$router.push(`/transactions/${query}`);
     },
     goToBlock(height) {
@@ -174,7 +174,7 @@ export default {
       });
     },
     formatVolumeAmount(value) {
-      // �?거래???�용 ?�맷 (?�수???�이)
+      // Display total volume (integer units)
       let num;
       
       if (Array.isArray(value)) {

@@ -9,6 +9,15 @@ Astram is a lightweight, PoW blockchain focused on fast propagation, clean desig
 - **Astram-explorer**: Local chain explorer (indexes from the node).
 - **wallet-cli**: Command-line wallet and config tool.
 
+## Consensus (Current)
+
+- **PoW rule**: Bitcoin-style numeric target check (`hash_u256 < target_u256`).
+- **Difficulty encoding**: Compact target bits (`nBits`-style `u32`) stored in block header `difficulty`.
+- **Target block time**: `120` seconds (about 2 minutes).
+- **Retarget cadence**: Every block, using a rolling 30-block timing window.
+- **Retarget formula**: `new_target = old_target * actual_timespan / target_timespan`.
+- **Stability guards**: `actual_timespan` is clamped to `[target_timespan/4, target_timespan*4]` and only 25% of each computed move is applied per block (damping).
+
 ## Quick Start
 
 ### Release builds (recommended)
